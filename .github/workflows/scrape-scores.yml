@@ -2,8 +2,8 @@ name: Scrape Scores
 
 on:
   schedule:
-    # Every 5 minutes during tournament hours (Thu-Sun, 7am-8pm ET / 11:00-00:00 UTC)
-    - cron: '*/5 11-23 * 3 4-0'
+    # Every 5 minutes during tournament days (March, Thu-Sun, 7am-8pm ET / 11:00-00:00 UTC)
+    - cron: '*/5 11-23 * 3 0,4-6'
   workflow_dispatch: # Allow manual trigger from GitHub UI
 
 jobs:
