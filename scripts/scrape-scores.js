@@ -281,20 +281,29 @@ async function scrapeAndUpdate() {
   // eventStatus.period is often undefined between rounds, so derive from linescores
   let espnRound = eventStatus.period;
   if (!espnRound) {
-    // Check the highest round that appears in ANY linescore (even without a value —
-    // ESPN adds an empty linescore entry for the next round once it begins)
-    let maxRoundSeen = 0;
     let maxCompletedRound = 0;
+    let playersWithThru = 0;
     for (const c of competitors) {
+      if (c.status?.thru !== undefined && c.status?.thru !== null) playersWithThru++;
       for (const ls of (c.linescores || [])) {
-        if (ls.period && ls.period > maxRoundSeen) maxRoundSeen = ls.period;
-        if (ls.period && ls.value !== undefined && ls.period > maxCompletedRound) {
+        // ESPN uses displayValue "-" as a placeholder for rounds not yet played
+        const isPlaceholder = ls.displayValue === '-' || ls.displayValue === '--';
+        if (ls.period && ls.value !== undefined && !isPlaceholder && ls.period > maxCompletedRound) {
           maxCompletedRound = ls.period;
         }
       }
     }
-    // If we see a round with no completed scores, that round has started
-    espnRound = maxRoundSeen || maxCompletedRound || tournament.currentRound || 1;
+    espnRound = maxCompletedRound || tournament.currentRound || 1;
+    // If players are on the course for a new round, advance
+    if (playersWithThru > 0 && maxCompletedRound > 0) {
+      // Check if any player has thru data for a round beyond maxCompletedRound
+      for (const c of competitors) {
+        if (c.status?.thru !== undefined && c.status?.thru !== null) {
+          const maxPeriod = Math.max(...(c.linescores || []).filter(ls => ls.value !== undefined && ls.displayValue !== '-').map(ls => ls.period || 0));
+          if (maxPeriod > espnRound) espnRound = maxPeriod;
+        }
+      }
+    }
   }
   console.log(`Current round: ${espnRound}`);
 
@@ -382,7 +391,8 @@ async function scrapeAndUpdate() {
     let thru = '--';
     const linescores = competitor.linescores || [];
     const currentRoundLS = linescores.find(ls => ls.period === espnRound);
-    const hasCurrentRoundScore = currentRoundLS && currentRoundLS.value !== undefined;
+    const isPlaceholderScore = currentRoundLS?.displayValue === '-' || currentRoundLS?.displayValue === '--';
+    const hasCurrentRoundScore = currentRoundLS && currentRoundLS.value !== undefined && !isPlaceholderScore;
 
     if (statusDisplay === 'CUT' || statusDisplay === 'MC' || statusDisplay === 'WD' || statusDisplay === 'DQ') {
       // Eliminated players — show their last completed round
@@ -409,9 +419,14 @@ async function scrapeAndUpdate() {
       today = currentRoundLS.displayValue || currentRoundLS.value.toString();
       thru = 'F';
     } else {
-      // Player hasn't started current round yet — show tee time or '--'
-      today = '--';
-      thru = '--';
+      // Between rounds — show last completed round's score
+      const lastCompleted = linescores
+        .filter(ls => ls.value !== undefined && ls.displayValue !== '-' && ls.displayValue !== '--')
+        .sort((a, b) => b.period - a.period)[0];
+      if (lastCompleted) {
+        today = lastCompleted.displayValue || lastCompleted.value.toString();
+        thru = 'F';
+      }
     }
 
     const roundScores = { r1: null, r2: null, r3: null, r4: null };

@@ -210,17 +210,26 @@ async function scrapeAndUpdate() {
 
   let espnRound = eventStatus.period;
   if (!espnRound) {
-    let maxRoundSeen = 0;
     let maxCompletedRound = 0;
+    let playersWithThru = 0;
     for (const c of competitors) {
+      if (c.status?.thru !== undefined && c.status?.thru !== null) playersWithThru++;
       for (const ls of c.linescores || []) {
-        if (ls.period && ls.period > maxRoundSeen) maxRoundSeen = ls.period;
-        if (ls.period && ls.value !== undefined && ls.period > maxCompletedRound) {
+        const isPlaceholder = ls.displayValue === "-" || ls.displayValue === "--";
+        if (ls.period && ls.value !== undefined && !isPlaceholder && ls.period > maxCompletedRound) {
           maxCompletedRound = ls.period;
         }
       }
     }
-    espnRound = maxRoundSeen || maxCompletedRound || tournament.currentRound || 1;
+    espnRound = maxCompletedRound || tournament.currentRound || 1;
+    if (playersWithThru > 0 && maxCompletedRound > 0) {
+      for (const c of competitors) {
+        if (c.status?.thru !== undefined && c.status?.thru !== null) {
+          const maxPeriod = Math.max(...(c.linescores || []).filter(ls => ls.value !== undefined && ls.displayValue !== "-").map(ls => ls.period || 0));
+          if (maxPeriod > espnRound) espnRound = maxPeriod;
+        }
+      }
+    }
   }
   logger.info(`Current round: ${espnRound}`);
 
@@ -304,14 +313,15 @@ async function scrapeAndUpdate() {
     let thru = "--";
     const linescores = competitor.linescores || [];
     const currentRoundLS = linescores.find((ls) => ls.period === espnRound);
-    const hasCurrentRoundScore = currentRoundLS && currentRoundLS.value !== undefined;
+    const isPlaceholderScore = currentRoundLS?.displayValue === "-" || currentRoundLS?.displayValue === "--";
+    const hasCurrentRoundScore = currentRoundLS && currentRoundLS.value !== undefined && !isPlaceholderScore;
 
     if (statusDisplay === "CUT" || statusDisplay === "MC" || statusDisplay === "WD" || statusDisplay === "DQ") {
       thru = "F";
       if (hasCurrentRoundScore) {
         today = currentRoundLS.displayValue || currentRoundLS.value.toString();
       } else {
-        const lastCompleted = linescores.filter((ls) => ls.value !== undefined).sort((a, b) => b.period - a.period)[0];
+        const lastCompleted = linescores.filter((ls) => ls.value !== undefined && ls.displayValue !== "-" && ls.displayValue !== "--").sort((a, b) => b.period - a.period)[0];
         today = lastCompleted?.displayValue || lastCompleted?.value?.toString() || "--";
       }
     } else if (competitor.status?.thru !== undefined && competitor.status?.thru !== null) {
@@ -327,8 +337,11 @@ async function scrapeAndUpdate() {
       today = currentRoundLS.displayValue || currentRoundLS.value.toString();
       thru = "F";
     } else {
-      today = "--";
-      thru = "--";
+      const lastCompleted = linescores.filter((ls) => ls.value !== undefined && ls.displayValue !== "-" && ls.displayValue !== "--").sort((a, b) => b.period - a.period)[0];
+      if (lastCompleted) {
+        today = lastCompleted.displayValue || lastCompleted.value.toString();
+        thru = "F";
+      }
     }
 
     // Round scores
