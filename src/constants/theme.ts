@@ -35,6 +35,7 @@ export const PAYMENT_METHODS = {
   venmo: 'Phil-Overton',
   cashApp: 'PhilipOverton',
   payPal: 'pove1@juno.com',
+  zelle: 'pove1@juno.com',
 } as const;
 
 export const ENTRY_FEE = 10;

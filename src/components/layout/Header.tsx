@@ -28,6 +28,9 @@ export default function Header() {
               <Link to="/my-entries" className={`px-2 py-1 rounded transition ${isActive('/my-entries')}`}>
                 My Entries
               </Link>
+              <Link to="/settings" className={`px-2 py-1 rounded transition ${isActive('/settings')}`}>
+                Info
+              </Link>
               {user.isAdmin && (
                 <Link to="/admin/tournament" className={`px-2 py-1 rounded transition ${isActive('/admin/tournament')}`}>
                   Admin

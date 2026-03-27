@@ -8,6 +8,7 @@ import Leaderboard from './pages/Leaderboard';
 import Draft from './pages/Draft';
 import MyEntries from './pages/MyEntries';
 import Profile from './pages/Profile';
+import Settings from './pages/Settings';
 import AdminLogin from './pages/AdminLogin';
 import TournamentSetup from './pages/admin/TournamentSetup';
 import ScoreManagement from './pages/admin/ScoreManagement';
@@ -66,6 +67,7 @@ function AppRoutes() {
         <Route path="/leaderboard" element={<Leaderboard />} />
         <Route path="/draft" element={<Draft />} />
         <Route path="/my-entries" element={<MyEntries />} />
+        <Route path="/settings" element={<Settings />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/admin" element={<AdminLogin />} />
         <Route path="/admin/tournament" element={<RequireAdmin><TournamentSetup /></RequireAdmin>} />

@@ -1,63 +1,102 @@
-import { useState } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { useTournament, useTiers, useEntries, submitEntry } from '../hooks/useTournament';
+import {
+  useTournament,
+  useTiers,
+  useEntries,
+  submitEntry,
+  updateEntry,
+} from '../hooks/useTournament';
 import { TIER_COLORS } from '../constants/theme';
 import TierBadge from '../components/common/TierBadge';
 import { Timestamp } from 'firebase/firestore';
+import { useSearchParams, useNavigate } from 'react-router-dom';
 
 export default function Draft() {
   const { user } = useAuth();
   const { tournament } = useTournament();
   const { tiers } = useTiers(tournament?.id);
   const { entries } = useEntries(tournament?.id);
+  const [searchParams] = useSearchParams();
+  const navigate = useNavigate();
+  const editEntryId = searchParams.get('edit');
+
   const [picks, setPicks] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
-  const [submitted, setSubmitted] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
   const [error, setError] = useState('');
 
-  // Locked if admin set picksLocked OR if first tee time has passed
-  const teeTimePassed = tournament?.firstTeeTime
-    ? tournament.firstTeeTime.toDate().getTime() <= Date.now()
-    : false;
-  const isLocked = tournament?.picksLocked || teeTimePassed;
-  const allTiersPicked = tiers.length === 6 && tiers.every((t) => picks[`tier${t.tierNumber}`]);
+  // Entry being edited (if any)
+  const editingEntry = useMemo(() => {
+    if (!editEntryId) return null;
+    return entries.find((e) => e.id === editEntryId && e.userId === user?.uid) || null;
+  }, [editEntryId, entries, user?.uid]);
 
-  // Count user's existing entries
+  // Pre-populate picks when editing an existing entry
+  useEffect(() => {
+    if (editingEntry) {
+      setPicks({
+        tier1: editingEntry.picks.tier1,
+        tier2: editingEntry.picks.tier2,
+        tier3: editingEntry.picks.tier3,
+        tier4: editingEntry.picks.tier4,
+        tier5: editingEntry.picks.tier5,
+        tier6: editingEntry.picks.tier6,
+      });
+      setSaveStatus('idle');
+    }
+  }, [editingEntry]);
+
+  // Deadline logic
+  const firstTeeTime = tournament?.firstTeeTime?.toDate();
+  const teeTimePassed = firstTeeTime ? firstTeeTime.getTime() <= Date.now() : false;
+  const isLocked = tournament?.picksLocked || teeTimePassed;
+  const allTiersPicked =
+    tiers.length === 6 && tiers.every((t) => picks[`tier${t.tierNumber}`]);
+
   const userEntries = entries.filter((e) => e.userId === user?.uid);
   const nextEntryNumber = userEntries.length + 1;
 
   const handlePick = (tierNumber: number, golferId: string) => {
     if (isLocked) return;
     setPicks((prev) => ({ ...prev, [`tier${tierNumber}`]: golferId }));
+    setSaveStatus('idle');
   };
 
   const handleSubmit = async () => {
     if (!tournament || !user || !allTiersPicked) return;
     setSubmitting(true);
     setError('');
+    setSaveStatus('idle');
+
+    const picksData = {
+      tier1: picks.tier1,
+      tier2: picks.tier2,
+      tier3: picks.tier3,
+      tier4: picks.tier4,
+      tier5: picks.tier5,
+      tier6: picks.tier6,
+    };
 
     try {
-      await submitEntry(tournament.id, {
-        userId: user.uid,
-        participantName: user.displayName,
-        entryNumber: nextEntryNumber,
-        entryLabel: `${user.displayName} #${nextEntryNumber}`,
-        picks: {
-          tier1: picks.tier1,
-          tier2: picks.tier2,
-          tier3: picks.tier3,
-          tier4: picks.tier4,
-          tier5: picks.tier5,
-          tier6: picks.tier6,
-        },
-        totalScore: 0,
-        paid: false,
-        submittedAt: Timestamp.now(),
-      });
-      setSubmitted(true);
-      setPicks({});
+      if (editingEntry) {
+        await updateEntry(tournament.id, editingEntry.id, { picks: picksData });
+      } else {
+        await submitEntry(tournament.id, {
+          userId: user.uid,
+          participantName: user.displayName,
+          entryNumber: nextEntryNumber,
+          entryLabel: `${user.displayName} #${nextEntryNumber}`,
+          picks: picksData,
+          totalScore: 0,
+          paid: false,
+          submittedAt: Timestamp.now(),
+        });
+      }
+      setSaveStatus('saved');
     } catch (err: any) {
       setError(err.message || 'Failed to submit entry.');
+      setSaveStatus('error');
     } finally {
       setSubmitting(false);
     }
@@ -71,38 +110,72 @@ export default function Draft() {
     );
   }
 
-  if (submitted) {
-    return (
-      <div className="text-center py-12">
-        <span className="text-5xl">&#127942;</span>
-        <h2 className="text-2xl font-bold text-masters-green mt-4">Entry Submitted!</h2>
-        <p className="text-gray-600 mt-2">
-          {user?.displayName} #{nextEntryNumber - 1} has been locked in.
-        </p>
-        <button
-          onClick={() => setSubmitted(false)}
-          className="mt-6 bg-masters-green text-white px-6 py-3 rounded-lg font-semibold hover:bg-masters-dark transition"
-        >
-          Submit Another Entry
-        </button>
-      </div>
-    );
-  }
+  const deadlineStr = firstTeeTime
+    ? firstTeeTime.toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+      }) +
+      ' at ' +
+      firstTeeTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    : 'the first tee time on Thursday';
 
   return (
     <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-gray-900">{tournament.name} — Draft</h1>
+        <h1 className="text-2xl font-bold text-gray-900">
+          {editingEntry ? `Edit: ${editingEntry.entryLabel}` : `${tournament.name} — Draft`}
+        </h1>
         <p className="text-gray-500 mt-1">
           {isLocked
             ? 'Picks are locked. Contact the admin for any changes.'
-            : `Select 1 golfer from each tier. This will be entry #${nextEntryNumber}.`}
+            : editingEntry
+              ? 'Update your picks below. You can edit until the picks deadline.'
+              : `Select 1 golfer from each tier. This will be entry #${nextEntryNumber}.`}
         </p>
       </div>
 
       {isLocked && (
         <div className="bg-red-50 border border-red-200 rounded-xl p-4 mb-6 text-red-700 text-sm font-medium">
           Picks are locked — the tournament has started.
+        </div>
+      )}
+
+      {!isLocked && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 text-blue-800 text-sm">
+          You can edit your picks until{' '}
+          <span className="font-semibold">{deadlineStr}</span>. Your picks are hidden from
+          other participants until then.
+        </div>
+      )}
+
+      {saveStatus === 'saved' && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
+          <p className="text-green-800 font-semibold">
+            {editingEntry ? 'Picks updated!' : 'Entry submitted!'}
+          </p>
+          <p className="text-green-600 text-sm mt-1">
+            Your picks have been saved. You can still edit them until the deadline.
+          </p>
+          <div className="flex gap-3 mt-3">
+            <button
+              onClick={() => navigate('/my-entries')}
+              className="bg-masters-green text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-masters-dark transition"
+            >
+              View My Entries
+            </button>
+            {!editingEntry && (
+              <button
+                onClick={() => {
+                  setPicks({});
+                  setSaveStatus('idle');
+                }}
+                className="bg-white text-masters-green px-4 py-2 rounded-lg text-sm font-semibold border border-masters-green hover:bg-green-50 transition"
+              >
+                Submit Another Entry
+              </button>
+            )}
+          </div>
         </div>
       )}
 
@@ -113,7 +186,9 @@ export default function Draft() {
 
           return (
             <div key={tier.id} className="bg-white rounded-xl shadow-sm overflow-hidden">
-              <div className={`${tierConfig?.bg || 'bg-gray-500'} px-4 py-3 flex items-center gap-3`}>
+              <div
+                className={`${tierConfig?.bg || 'bg-gray-500'} px-4 py-3 flex items-center gap-3`}
+              >
                 <TierBadge tierNumber={tier.tierNumber} />
                 <span className={`font-semibold ${tierConfig?.text || 'text-white'}`}>
                   {tier.label || tierConfig?.label}
@@ -147,7 +222,7 @@ export default function Draft() {
         <div className="mt-4 bg-red-50 text-red-600 text-sm rounded-lg p-3">{error}</div>
       )}
 
-      {!isLocked && tiers.length > 0 && (
+      {!isLocked && tiers.length > 0 && saveStatus !== 'saved' && (
         <div className="mt-8 sticky bottom-4">
           <button
             onClick={handleSubmit}
@@ -159,9 +234,11 @@ export default function Draft() {
             }`}
           >
             {submitting
-              ? 'Submitting...'
+              ? 'Saving...'
               : allTiersPicked
-                ? `Submit Entry #${nextEntryNumber}`
+                ? editingEntry
+                  ? 'Save Changes'
+                  : `Submit Entry #${nextEntryNumber}`
                 : `Select all 6 tiers (${Object.keys(picks).length}/6)`}
           </button>
         </div>

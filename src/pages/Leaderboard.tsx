@@ -1,42 +1,78 @@
 import { useState, useMemo } from 'react';
 import { useTournament, useTiers, useGolferScores, useEntries } from '../hooks/useTournament';
+import { useAuth } from '../hooks/useAuth';
+import { useEspnLeaderboard } from '../lib/espnApi';
+import { calculateGolferPoints } from '../constants/scoring';
 import TierBadge from '../components/common/TierBadge';
 
 type Tab = 'pool' | 'golfers';
 
 export default function Leaderboard() {
   const [tab, setTab] = useState<Tab>('pool');
+  const { user } = useAuth();
   const { tournament } = useTournament();
   const { tiers } = useTiers(tournament?.id);
   const { scores } = useGolferScores(tournament?.id);
   const { entries } = useEntries(tournament?.id);
+  const { data: espnData, loading: espnLoading } = useEspnLeaderboard();
 
-  // Build a map of golferId -> score info
+  // Deadline logic
+  const firstTeeTime = tournament?.firstTeeTime?.toDate();
+  const picksRevealed =
+    tournament?.picksLocked || (firstTeeTime ? firstTeeTime.getTime() <= Date.now() : false);
+
+  // Auto-calculate cutPlayerCount: ESPN → Firestore → admin setting → default
+  const cutPlayerCount = useMemo(() => {
+    if (espnData && espnData.cutPlayerCount > 0) return espnData.cutPlayerCount;
+    const activeInFirestore = scores.filter((s) => s.status === 'active').length;
+    if (activeInFirestore > 0 && scores.some((s) => s.status === 'cut'))
+      return activeInFirestore;
+    return tournament?.cutPlayerCount ?? 50;
+  }, [espnData, scores, tournament?.cutPlayerCount]);
+
+  // Build maps from Firestore data (for pool scoring)
   const scoreMap = useMemo(() => {
-    const map = new Map<string, { points: number; score: string; position: number | null; status: string }>();
-    scores.forEach((s) => map.set(s.id, { points: s.points, score: s.score, position: s.position, status: s.status }));
+    const map = new Map<
+      string,
+      { points: number; score: string; position: number | null; status: string }
+    >();
+    scores.forEach((s) => {
+      const points = calculateGolferPoints(s.position, s.status, cutPlayerCount);
+      map.set(s.id, { points, score: s.score, position: s.position, status: s.status });
+    });
     return map;
-  }, [scores]);
+  }, [scores, cutPlayerCount]);
 
-  // Build a map of golferId -> golfer name (from tiers)
   const golferNameMap = useMemo(() => {
     const map = new Map<string, string>();
     tiers.forEach((t) => t.golfers.forEach((g) => map.set(g.id, g.name)));
     return map;
   }, [tiers]);
 
-  // Build a map of golferId -> tier number
   const golferTierMap = useMemo(() => {
     const map = new Map<string, number>();
     tiers.forEach((t) => t.golfers.forEach((g) => map.set(g.id, t.tierNumber)));
     return map;
   }, [tiers]);
 
-  // Calculate entry totals
+  // Filter entries: admins always see all, regular users blinded before deadline
+  const visibleEntries = useMemo(() => {
+    if (picksRevealed || user?.isAdmin) return entries;
+    return entries.filter((e) => e.userId === user?.uid);
+  }, [entries, picksRevealed, user?.isAdmin, user?.uid]);
+
+  // Calculate entry totals with dynamic cutPlayerCount
   const rankedEntries = useMemo(() => {
-    return entries
+    return visibleEntries
       .map((entry) => {
-        const pickIds = [entry.picks.tier1, entry.picks.tier2, entry.picks.tier3, entry.picks.tier4, entry.picks.tier5, entry.picks.tier6];
+        const pickIds = [
+          entry.picks.tier1,
+          entry.picks.tier2,
+          entry.picks.tier3,
+          entry.picks.tier4,
+          entry.picks.tier5,
+          entry.picks.tier6,
+        ];
         const golferDetails = pickIds.map((id) => ({
           id,
           name: golferNameMap.get(id) || 'Unknown',
@@ -49,13 +85,17 @@ export default function Leaderboard() {
         return { ...entry, golferDetails, totalScore };
       })
       .sort((a, b) => a.totalScore - b.totalScore);
-  }, [entries, scoreMap, golferNameMap, golferTierMap]);
+  }, [visibleEntries, scoreMap, golferNameMap, golferTierMap]);
 
-  // Sorted golfer scores
-  const sortedScores = useMemo(
-    () => [...scores].sort((a, b) => (a.position ?? 999) - (b.position ?? 999)),
-    [scores]
-  );
+  // ESPN golfer data with pool points
+  const espnGolfers = useMemo(() => {
+    if (!espnData) return [];
+    const effectiveCut = espnData.cutPlayerCount > 0 ? espnData.cutPlayerCount : cutPlayerCount;
+    return espnData.golfers.map((g) => ({
+      ...g,
+      poolPoints: calculateGolferPoints(g.positionNum, g.status, effectiveCut),
+    }));
+  }, [espnData, cutPlayerCount]);
 
   if (!tournament) {
     return (
@@ -64,6 +104,16 @@ export default function Leaderboard() {
       </div>
     );
   }
+
+  const deadlineStr = firstTeeTime
+    ? firstTeeTime.toLocaleDateString('en-US', {
+        weekday: 'long',
+        month: 'long',
+        day: 'numeric',
+      }) +
+      ' at ' +
+      firstTeeTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })
+    : 'the first tee time on Thursday';
 
   return (
     <div>
@@ -78,12 +128,32 @@ export default function Leaderboard() {
         </p>
       </div>
 
+      {/* Blinded / Revealed banner */}
+      {!picksRevealed && (
+        <div className="bg-blue-50 border border-blue-200 rounded-xl p-4 mb-6 text-blue-800 text-sm">
+          <p className="font-semibold">Picks are hidden until {deadlineStr}</p>
+          <p className="mt-1 text-blue-600">
+            Only your entries are shown below. All picks will be revealed once the tournament
+            begins.
+            {entries.length > 0 && ` (${entries.length} total entries submitted)`}
+          </p>
+        </div>
+      )}
+
+      {picksRevealed && tournament.status !== 'setup' && (
+        <div className="bg-green-50 border border-green-200 rounded-xl p-3 mb-6 text-green-800 text-sm font-medium">
+          All picks are locked and visible. {entries.length} entries in the pool.
+        </div>
+      )}
+
       {/* Tab selector */}
       <div className="flex bg-white rounded-xl shadow-sm p-1 mb-6">
         <button
           onClick={() => setTab('pool')}
           className={`flex-1 py-2.5 rounded-lg font-semibold text-sm transition ${
-            tab === 'pool' ? 'bg-masters-green text-white' : 'text-gray-500 hover:text-gray-700'
+            tab === 'pool'
+              ? 'bg-masters-green text-white'
+              : 'text-gray-500 hover:text-gray-700'
           }`}
         >
           Pool Standings
@@ -91,7 +161,9 @@ export default function Leaderboard() {
         <button
           onClick={() => setTab('golfers')}
           className={`flex-1 py-2.5 rounded-lg font-semibold text-sm transition ${
-            tab === 'golfers' ? 'bg-masters-green text-white' : 'text-gray-500 hover:text-gray-700'
+            tab === 'golfers'
+              ? 'bg-masters-green text-white'
+              : 'text-gray-500 hover:text-gray-700'
           }`}
         >
           Golfer Leaderboard
@@ -101,10 +173,14 @@ export default function Leaderboard() {
       {tab === 'pool' ? (
         <div className="space-y-3">
           {rankedEntries.length === 0 ? (
-            <p className="text-center text-gray-400 py-8">No entries yet.</p>
+            <p className="text-center text-gray-400 py-8">
+              {picksRevealed
+                ? 'No entries yet.'
+                : "You haven't submitted any entries yet. Head to the Draft page to make your picks!"}
+            </p>
           ) : (
             rankedEntries.map((entry, idx) => {
-              const isTop3 = idx < 3;
+              const isTop3 = idx < 3 && picksRevealed;
               return (
                 <div
                   key={entry.id}
@@ -114,31 +190,37 @@ export default function Leaderboard() {
                 >
                   <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                     <div className="flex items-center gap-3">
-                      <span
-                        className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                          idx === 0
-                            ? 'bg-masters-yellow text-gray-900'
-                            : idx === 1
-                              ? 'bg-gray-300 text-gray-700'
-                              : idx === 2
-                                ? 'bg-orange-300 text-gray-800'
-                                : 'bg-gray-100 text-gray-500'
-                        }`}
-                      >
-                        {idx + 1}
-                      </span>
+                      {picksRevealed && (
+                        <span
+                          className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
+                            idx === 0
+                              ? 'bg-masters-yellow text-gray-900'
+                              : idx === 1
+                                ? 'bg-gray-300 text-gray-700'
+                                : idx === 2
+                                  ? 'bg-orange-300 text-gray-800'
+                                  : 'bg-gray-100 text-gray-500'
+                          }`}
+                        >
+                          {idx + 1}
+                        </span>
+                      )}
                       <div>
                         <span className="font-semibold text-gray-900">{entry.entryLabel}</span>
                       </div>
                     </div>
-                    <span className="text-xl font-bold text-masters-green">{entry.totalScore || '--'}</span>
+                    <span className="text-xl font-bold text-masters-green">
+                      {entry.totalScore || '--'}
+                    </span>
                   </div>
                   <div className="px-4 py-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-xs">
                     {entry.golferDetails.map((g) => (
                       <div key={g.id} className="flex items-center gap-1.5 text-gray-600">
                         <TierBadge tierNumber={g.tier} size="sm" />
                         <span className="truncate">{g.name}</span>
-                        <span className="font-semibold text-gray-900 ml-auto">{g.points || '--'}</span>
+                        <span className="font-semibold text-gray-900 ml-auto">
+                          {g.points || '--'}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -148,41 +230,73 @@ export default function Leaderboard() {
           )}
         </div>
       ) : (
+        /* ── Golfer Leaderboard (ESPN full field) ── */
         <div className="bg-white rounded-xl shadow-sm overflow-hidden">
-          <table className="w-full text-sm">
-            <thead className="bg-masters-green text-white">
-              <tr>
-                <th className="text-left px-4 py-3">Pos</th>
-                <th className="text-left px-4 py-3">Golfer</th>
-                <th className="text-center px-4 py-3">Score</th>
-                <th className="text-center px-4 py-3">Today</th>
-                <th className="text-center px-4 py-3">Thru</th>
-                <th className="text-center px-4 py-3">Pts</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sortedScores.length === 0 ? (
-                <tr>
-                  <td colSpan={6} className="text-center py-8 text-gray-400">
-                    No scores yet. Admin will enter scores once the tournament begins.
-                  </td>
-                </tr>
-              ) : (
-                sortedScores.map((s, idx) => (
-                  <tr key={s.id} className={`border-b border-gray-100 ${idx % 2 === 0 ? 'bg-white' : 'bg-gray-50'}`}>
-                    <td className="px-4 py-2.5 font-semibold">
-                      {s.status === 'cut' ? 'CUT' : s.status === 'withdrawn' ? 'WD' : s.position ?? '--'}
-                    </td>
-                    <td className="px-4 py-2.5 font-medium text-gray-900">{s.name}</td>
-                    <td className="px-4 py-2.5 text-center">{s.score}</td>
-                    <td className="px-4 py-2.5 text-center">{s.today || '--'}</td>
-                    <td className="px-4 py-2.5 text-center">{s.thru || '--'}</td>
-                    <td className="px-4 py-2.5 text-center font-bold text-masters-green">{s.points}</td>
-                  </tr>
-                ))
-              )}
-            </tbody>
-          </table>
+          {espnLoading ? (
+            <div className="text-center py-12">
+              <span className="text-3xl animate-pulse">&#9971;</span>
+              <p className="text-gray-400 mt-3">Loading tournament leaderboard...</p>
+            </div>
+          ) : !espnData || espnData.golfers.length === 0 ? (
+            <div className="text-center py-12">
+              <p className="text-gray-400">
+                Tournament leaderboard will appear here once the tournament begins.
+              </p>
+            </div>
+          ) : (
+            <>
+              <div className="px-4 py-2 bg-gray-50 border-b text-xs text-gray-500">
+                {espnData.name} &mdash; {espnData.golfers.length} golfers
+                {espnData.cutPlayerCount > 0 &&
+                  ` \u2022 ${espnData.cutPlayerCount} made the cut`}
+              </div>
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead className="bg-masters-green text-white">
+                    <tr>
+                      <th className="text-left px-4 py-3">Pos</th>
+                      <th className="text-left px-4 py-3">Golfer</th>
+                      <th className="text-center px-4 py-3">Score</th>
+                      <th className="text-center px-4 py-3">Today</th>
+                      <th className="text-center px-4 py-3">Thru</th>
+                      <th className="text-center px-4 py-3">Pts</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {espnGolfers.map((g, idx) => (
+                      <tr
+                        key={g.id + idx}
+                        className={`border-b border-gray-100 ${
+                          g.status === 'cut'
+                            ? 'bg-red-50/50 text-gray-400'
+                            : g.status === 'withdrawn'
+                              ? 'bg-gray-50 text-gray-400'
+                              : idx % 2 === 0
+                                ? 'bg-white'
+                                : 'bg-gray-50'
+                        }`}
+                      >
+                        <td className="px-4 py-2.5 font-semibold">
+                          {g.status === 'cut'
+                            ? 'CUT'
+                            : g.status === 'withdrawn'
+                              ? 'WD'
+                              : g.position}
+                        </td>
+                        <td className="px-4 py-2.5 font-medium text-gray-900">{g.name}</td>
+                        <td className="px-4 py-2.5 text-center">{g.score}</td>
+                        <td className="px-4 py-2.5 text-center">{g.today}</td>
+                        <td className="px-4 py-2.5 text-center">{g.thru}</td>
+                        <td className="px-4 py-2.5 text-center font-bold text-masters-green">
+                          {g.poolPoints}
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            </>
+          )}
         </div>
       )}
     </div>

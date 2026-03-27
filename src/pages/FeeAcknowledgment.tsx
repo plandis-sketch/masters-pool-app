@@ -38,6 +38,10 @@ export default function FeeAcknowledgment() {
               <span className="text-gray-600 font-medium">PayPal</span>
               <span className="font-mono text-masters-green font-semibold">{PAYMENT_METHODS.payPal}</span>
             </div>
+            <div className="flex items-center justify-between">
+              <span className="text-gray-600 font-medium">Zelle</span>
+              <span className="font-mono text-masters-green font-semibold">{PAYMENT_METHODS.zelle}</span>
+            </div>
           </div>
         </div>
 

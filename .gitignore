@@ -28,3 +28,6 @@ dist-ssr
 
 # Firebase
 .firebase/
+
+# Claude Code memory
+memory/
