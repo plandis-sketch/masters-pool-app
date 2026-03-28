@@ -4,7 +4,7 @@ export interface EspnGolfer {
   id: string;
   name: string;
   position: string;
-  positionNum: number | null;
+  positionNum: number;
   score: string;
   today: string;
   thru: string;
@@ -20,91 +20,95 @@ export interface EspnTournamentData {
   round: number;
 }
 
-const ESPN_GOLF_URL =
-  'https://site.api.espn.com/apis/site/v2/sports/golf/pga/leaderboard';
+const ESPN_SCOREBOARD_URL =
+  'https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard';
 
 export async function fetchLeaderboard(): Promise<EspnTournamentData | null> {
   try {
-    const res = await fetch(ESPN_GOLF_URL);
+    const res = await fetch(ESPN_SCOREBOARD_URL);
     if (!res.ok) return null;
     const data = await res.json();
 
-    const event = data.events?.[0];
+    // Find the current/in-progress event
+    const events = data.events || [];
+    const event =
+      events.find((e: any) => e.status?.type?.state === 'in') ||
+      events.find((e: any) => e.status?.type?.state === 'post') ||
+      events[0];
     if (!event) return null;
 
-    const competition = event.competitions?.[0];
-    const competitors = competition?.competitors || [];
-    const currentRound = competition?.status?.period || 1;
+    const comp = event.competitions?.[0];
+    const competitors: any[] = comp?.competitors || [];
+    if (competitors.length === 0) return null;
+
+    // Determine current round from the max linescores among active players
+    const maxRounds = Math.max(...competitors.map((c: any) => c.linescores?.length || 0));
+
+    // Detect if a cut has been made:
+    // After round 2+, players with fewer rounds than the leaders missed the cut.
+    // Cut players have exactly 2 rounds while leaders have 3 or 4.
+    const hasCut = maxRounds >= 3;
+    const madeCutPlayers = hasCut
+      ? competitors.filter((c: any) => (c.linescores?.length || 0) >= 3)
+      : competitors;
+    const cutPlayerCount = hasCut ? madeCutPlayers.length : 0;
 
     const golfers: EspnGolfer[] = competitors.map((c: any) => {
       const athlete = c.athlete || {};
-      const statusType = (c.status?.type?.name || '') as string;
+      const roundsPlayed = c.linescores?.length || 0;
 
+      // Determine status from round count
       let status: EspnGolfer['status'] = 'active';
-      if (statusType.includes('CUT')) status = 'cut';
-      else if (statusType.includes('WITHDRAW') || statusType.includes('DISQUALIF'))
-        status = 'withdrawn';
+      if (hasCut && roundsPlayed < 3) {
+        status = 'cut';
+      }
 
-      const posDisplay = c.status?.position?.displayName || '--';
-      const posNum = parseInt(String(posDisplay).replace(/^T/, '')) || null;
+      // Position: use `order` field from ESPN (1-based ranking)
+      const order: number = c.order || 999;
 
+      // Build position display string with tie handling
+      // ESPN `order` is the sorted rank; for ties, multiple players share the same score
+      const posDisplay = status === 'cut' ? 'CUT' : String(order);
+
+      // Round scores (displayValue is score-to-par per round, e.g. "-6", "+2")
       const rounds: string[] = (c.linescores || []).map(
         (ls: any) => ls.displayValue || '--'
       );
 
-      // Try "today" from statistics, then fall back to latest round
-      let today = '--';
-      const stats: any[] = c.statistics || [];
-      for (const stat of stats) {
-        if (
-          stat.name === 'currentRound' ||
-          stat.name === 'today' ||
-          stat.name === 'todayScore'
-        ) {
-          today = stat.displayValue || '--';
-          break;
-        }
-      }
+      // "Today" = latest round score-to-par
+      const today = rounds.length > 0 ? rounds[rounds.length - 1] : '--';
 
-      // Thru
-      let thru = '--';
-      if (c.status?.thru !== undefined && c.status?.thru !== null) {
-        thru = c.status.thru >= 18 ? 'F' : String(c.status.thru);
-      } else if (c.status?.displayValue) {
-        thru = c.status.displayValue;
-      }
+      // "Thru" — scoreboard doesn't provide mid-round progress, so show F if round complete
+      const thru = status === 'cut' ? '--' : 'F';
 
       return {
-        id: athlete.id || c.id || '',
-        name: athlete.displayName || 'Unknown',
+        id: athlete.id || c.id || String(order),
+        name: athlete.displayName || athlete.fullName || 'Unknown',
         position: posDisplay,
-        positionNum: posNum,
-        score: c.score?.displayValue || '--',
+        positionNum: order,
+        score: typeof c.score === 'string' ? c.score : c.score?.displayValue || '--',
         today,
-        thru: status !== 'active' ? '--' : thru,
+        thru,
         status,
         rounds,
       };
     });
 
-    // Sort: active by position, then cut, then withdrawn
+    // Sort: active by order, then cut players by order
     golfers.sort((a, b) => {
       if (a.status !== b.status) {
-        const order = { active: 0, cut: 1, withdrawn: 2 };
-        return order[a.status] - order[b.status];
+        const statusOrder = { active: 0, cut: 1, withdrawn: 2 };
+        return statusOrder[a.status] - statusOrder[b.status];
       }
-      return (a.positionNum ?? 999) - (b.positionNum ?? 999);
+      return a.positionNum - b.positionNum;
     });
-
-    const hasCut = golfers.some((g) => g.status === 'cut');
-    const activeCount = golfers.filter((g) => g.status === 'active').length;
 
     return {
       id: event.id,
-      name: event.name || 'PGA Tournament',
+      name: event.name || event.shortName || 'PGA Tournament',
       golfers,
-      cutPlayerCount: hasCut ? activeCount : 0,
-      round: currentRound,
+      cutPlayerCount,
+      round: maxRounds,
     };
   } catch (err) {
     console.error('ESPN API error:', err);
