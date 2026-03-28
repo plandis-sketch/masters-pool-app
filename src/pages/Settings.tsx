@@ -14,7 +14,7 @@ export default function Settings() {
         <div className="bg-masters-cream rounded-xl p-5">
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-gray-600 font-medium">Venmo</span>
+              <span className="text-gray-600 font-medium">Venmo <span className="text-xs text-masters-green">(preferred)</span></span>
               <span className="font-mono text-masters-green font-semibold">
                 {PAYMENT_METHODS.venmo}
               </span>
@@ -74,7 +74,7 @@ export default function Settings() {
           <li className="flex gap-2">
             <span className="text-masters-green font-bold shrink-0">&bull;</span>
             <span>
-              Payments can be made via Venmo, PayPal, Cash App, or Zelle up until midnight,
+              Payments can be made via Venmo (preferred), PayPal, Cash App, or Zelle up until midnight,
               Wednesday, March 25th.
             </span>
           </li>

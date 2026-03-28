@@ -27,7 +27,7 @@ export default function FeeAcknowledgment() {
           <h2 className="font-semibold text-gray-800 mb-3">Payment Methods</h2>
           <div className="space-y-3">
             <div className="flex items-center justify-between">
-              <span className="text-gray-600 font-medium">Venmo</span>
+              <span className="text-gray-600 font-medium">Venmo <span className="text-xs text-masters-green">(preferred)</span></span>
               <span className="font-mono text-masters-green font-semibold">{PAYMENT_METHODS.venmo}</span>
             </div>
             <div className="flex items-center justify-between">
