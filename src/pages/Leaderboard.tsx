@@ -14,7 +14,7 @@ export default function Leaderboard() {
   const { tiers } = useTiers(tournament?.id);
   const { scores } = useGolferScores(tournament?.id);
   const { entries } = useEntries(tournament?.id);
-  const { data: espnData, loading: espnLoading } = useEspnLeaderboard();
+  const { data: espnData, loading: espnLoading, lastUpdated } = useEspnLeaderboard();
 
   // Deadline logic
   const firstTeeTime = tournament?.firstTeeTime?.toDate();
@@ -245,10 +245,17 @@ export default function Leaderboard() {
             </div>
           ) : (
             <>
-              <div className="px-4 py-2 bg-gray-50 border-b text-xs text-gray-500">
-                {espnData.name} &mdash; {espnData.golfers.length} golfers
-                {espnData.cutPlayerCount > 0 &&
-                  ` \u2022 ${espnData.cutPlayerCount} made the cut`}
+              <div className="px-4 py-2 bg-gray-50 border-b text-xs text-gray-500 flex justify-between items-center">
+                <span>
+                  {espnData.name} &mdash; {espnData.golfers.length} golfers
+                  {espnData.cutPlayerCount > 0 &&
+                    ` \u2022 ${espnData.cutPlayerCount} made the cut`}
+                </span>
+                {lastUpdated && (
+                  <span className="text-gray-400">
+                    Updated {lastUpdated.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                  </span>
+                )}
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">

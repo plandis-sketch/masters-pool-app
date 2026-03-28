@@ -116,29 +116,56 @@ export async function fetchLeaderboard(): Promise<EspnTournamentData | null> {
   }
 }
 
-/** Hook — auto-refreshes every 2 minutes */
+/** Is today a tournament day? (Thu=4, Fri=5, Sat=6, Sun=0) */
+function isTournamentDay(): boolean {
+  const day = new Date().getDay();
+  return day === 0 || day === 4 || day === 5 || day === 6;
+}
+
+/** Hook — auto-refreshes every 5 minutes on tournament days */
 export function useEspnLeaderboard() {
   const [data, setData] = useState<EspnTournamentData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
 
   useEffect(() => {
     let mounted = true;
+    let interval: ReturnType<typeof setInterval> | null = null;
 
     const load = async () => {
       const result = await fetchLeaderboard();
       if (mounted) {
-        setData(result);
+        if (result) {
+          setData(result);
+          setLastUpdated(new Date());
+        }
         setLoading(false);
       }
     };
 
+    // Always fetch once immediately
     load();
-    const interval = setInterval(load, 2 * 60 * 1000);
+
+    const startPolling = () => {
+      if (interval) clearInterval(interval);
+      if (isTournamentDay()) {
+        interval = setInterval(load, 5 * 60 * 1000);
+      }
+    };
+
+    startPolling();
+
+    // Re-check tournament day at midnight to start/stop polling
+    const midnightCheck = setInterval(() => {
+      startPolling();
+    }, 60 * 60 * 1000);
+
     return () => {
       mounted = false;
-      clearInterval(interval);
+      if (interval) clearInterval(interval);
+      clearInterval(midnightCheck);
     };
   }, []);
 
-  return { data, loading };
+  return { data, loading, lastUpdated };
 }
