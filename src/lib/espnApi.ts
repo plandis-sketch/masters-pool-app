@@ -23,6 +23,27 @@ export interface EspnTournamentData {
 const ESPN_SCOREBOARD_URL =
   'https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard';
 
+/** Parse tee time string like "Sat Mar 28 12:55:00 PDT 2026" → "12:55 PM" */
+function formatTeeTime(raw: string): string {
+  try {
+    const match = raw.match(/(\d{1,2}):(\d{2}):\d{2}\s*(AM|PM|[A-Z]{2,4})/i);
+    if (!match) return raw;
+    let hour = parseInt(match[1], 10);
+    const min = match[2];
+    // If timezone abbreviation instead of AM/PM, assume 24h and convert
+    const ampm = /^(AM|PM)$/i.test(match[3])
+      ? match[3].toUpperCase()
+      : hour >= 12
+        ? 'PM'
+        : 'AM';
+    if (ampm === 'PM' && hour < 12) hour += 0; // already correct for display
+    const displayHour = hour > 12 ? hour - 12 : hour === 0 ? 12 : hour;
+    return `${displayHour}:${min} ${ampm}`;
+  } catch {
+    return raw;
+  }
+}
+
 export async function fetchLeaderboard(): Promise<EspnTournamentData | null> {
   try {
     const res = await fetch(ESPN_SCOREBOARD_URL);
@@ -41,45 +62,72 @@ export async function fetchLeaderboard(): Promise<EspnTournamentData | null> {
     const competitors: any[] = comp?.competitors || [];
     if (competitors.length === 0) return null;
 
-    // Determine current round from the max linescores among active players
-    const maxRounds = Math.max(...competitors.map((c: any) => c.linescores?.length || 0));
+    // Current round from competition status
+    const currentRound: number = comp.status?.period || 1;
 
-    // Detect if a cut has been made:
-    // After round 2+, players with fewer rounds than the leaders missed the cut.
-    // Cut players have exactly 2 rounds while leaders have 3 or 4.
-    const hasCut = maxRounds >= 3;
-    const madeCutPlayers = hasCut
-      ? competitors.filter((c: any) => (c.linescores?.length || 0) >= 3)
-      : competitors;
-    const cutPlayerCount = hasCut ? madeCutPlayers.length : 0;
+    // Detect cut: players whose current-round linescore is missing have been cut
+    // (ESPN still gives them linescores entries but only for rounds played)
+    const hasCut = currentRound >= 3;
+    let cutPlayerCount = 0;
 
     const golfers: EspnGolfer[] = competitors.map((c: any) => {
       const athlete = c.athlete || {};
-      const roundsPlayed = c.linescores?.length || 0;
+      const allLinescores: any[] = c.linescores || [];
 
-      // Determine status from round count
+      // Find the current round's linescore by period
+      const currentRoundLs = allLinescores.find((ls: any) => ls.period === currentRound);
+
+      // Determine status: if no linescore for current round and cut is possible, they're cut
       let status: EspnGolfer['status'] = 'active';
-      if (hasCut && roundsPlayed < 3) {
+      if (hasCut && !currentRoundLs) {
         status = 'cut';
       }
 
-      // Position: use `order` field from ESPN (1-based ranking)
-      const order: number = c.order || 999;
+      if (status === 'active') cutPlayerCount++;
 
-      // Build position display string with tie handling
-      // ESPN `order` is the sorted rank; for ties, multiple players share the same score
+      // Position
+      const order: number = c.order || 999;
       const posDisplay = status === 'cut' ? 'CUT' : String(order);
 
-      // Round scores (displayValue is score-to-par per round, e.g. "-6", "+2")
-      const rounds: string[] = (c.linescores || []).map(
-        (ls: any) => ls.displayValue || '--'
-      );
+      // Completed round scores (exclude placeholder/empty rounds)
+      const rounds: string[] = allLinescores
+        .filter((ls: any) => {
+          const holes = ls.linescores || [];
+          return holes.length === 18; // fully completed round
+        })
+        .map((ls: any) => ls.displayValue || '--');
 
-      // "Today" = latest round score-to-par
-      const today = rounds.length > 0 ? rounds[rounds.length - 1] : '--';
+      // Today & Thru for the current round
+      let today = '--';
+      let thru = '--';
 
-      // "Thru" — scoreboard doesn't provide mid-round progress, so show F if round complete
-      const thru = status === 'cut' ? '--' : 'F';
+      if (status === 'cut') {
+        // Cut players: no today/thru
+        today = '--';
+        thru = '--';
+      } else if (currentRoundLs) {
+        const holes: any[] = currentRoundLs.linescores || [];
+        const dv = currentRoundLs.displayValue || '';
+        const val = currentRoundLs.value || 0;
+
+        if (holes.length === 18) {
+          // Finished today's round
+          today = dv || '--';
+          thru = 'F';
+        } else if (holes.length > 0) {
+          // Currently on the course
+          today = dv || 'E';
+          thru = String(holes.length);
+        } else if (dv === '-' || val === 0) {
+          // Not yet started — extract tee time from stats
+          today = '--';
+          const stats = currentRoundLs.statistics?.categories?.[0]?.stats || [];
+          const teeTimeEntry = stats.length > 0 ? stats[stats.length - 1] : null;
+          if (teeTimeEntry?.displayValue && /\d{1,2}:\d{2}/.test(teeTimeEntry.displayValue)) {
+            thru = formatTeeTime(teeTimeEntry.displayValue);
+          }
+        }
+      }
 
       return {
         id: athlete.id || c.id || String(order),
@@ -94,6 +142,9 @@ export async function fetchLeaderboard(): Promise<EspnTournamentData | null> {
       };
     });
 
+    // If no cut detected via round presence, reset count
+    if (!hasCut) cutPlayerCount = 0;
+
     // Sort: active by order, then cut players by order
     golfers.sort((a, b) => {
       if (a.status !== b.status) {
@@ -107,8 +158,8 @@ export async function fetchLeaderboard(): Promise<EspnTournamentData | null> {
       id: event.id,
       name: event.name || event.shortName || 'PGA Tournament',
       golfers,
-      cutPlayerCount,
-      round: maxRounds,
+      cutPlayerCount: hasCut ? cutPlayerCount : 0,
+      round: currentRound,
     };
   } catch (err) {
     console.error('ESPN API error:', err);
