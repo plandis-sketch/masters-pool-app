@@ -65,10 +65,23 @@ export async function fetchLeaderboard(): Promise<EspnTournamentData | null> {
     // Current round from competition status
     const currentRound: number = comp.status?.period || 1;
 
-    // Detect cut: players whose current-round linescore is missing have been cut
-    // (ESPN still gives them linescores entries but only for rounds played)
+    // Detect cut: players flagged by ESPN as CUT/MC, or missing current-round linescore
     const hasCut = currentRound >= 3;
     let cutPlayerCount = 0;
+
+    // First pass: count active players to establish the cut score
+    if (hasCut) {
+      for (const c of competitors) {
+        const statusVal = (c.status?.displayValue || '').toUpperCase().trim();
+        const allLs: any[] = c.linescores || [];
+        const currentRoundLs = allLs.find((ls: any) => ls.period === currentRound);
+        const isCutByStatus = statusVal === 'CUT' || statusVal === 'MC' || statusVal === 'DQ';
+        const isCutByRound = !currentRoundLs && !isCutByStatus && statusVal !== 'WD' && statusVal !== 'W/D';
+        if (!isCutByStatus && !isCutByRound && statusVal !== 'WD' && statusVal !== 'W/D') {
+          cutPlayerCount++;
+        }
+      }
+    }
 
     const golfers: EspnGolfer[] = competitors.map((c: any) => {
       const athlete = c.athlete || {};
@@ -77,17 +90,20 @@ export async function fetchLeaderboard(): Promise<EspnTournamentData | null> {
       // Find the current round's linescore by period
       const currentRoundLs = allLinescores.find((ls: any) => ls.period === currentRound);
 
-      // Determine status: if no linescore for current round and cut is possible, they're cut
+      // Determine status from ESPN's explicit flag first, then fallback to linescore detection
+      const statusVal = (c.status?.displayValue || '').toUpperCase().trim();
       let status: EspnGolfer['status'] = 'active';
-      if (hasCut && !currentRoundLs) {
+      if (statusVal === 'CUT' || statusVal === 'MC' || statusVal === 'DQ') {
+        status = 'cut';
+      } else if (statusVal === 'WD' || statusVal === 'W/D') {
+        status = 'withdrawn';
+      } else if (hasCut && !currentRoundLs) {
         status = 'cut';
       }
 
-      if (status === 'active') cutPlayerCount++;
-
       // Position
       const order: number = c.order || 999;
-      const posDisplay = status === 'cut' ? 'CUT' : String(order);
+      const posDisplay = status === 'cut' ? 'CUT' : status === 'withdrawn' ? 'WD' : String(order);
 
       // Completed round scores (exclude placeholder/empty rounds)
       const rounds: string[] = allLinescores
@@ -101,8 +117,8 @@ export async function fetchLeaderboard(): Promise<EspnTournamentData | null> {
       let today = '--';
       let thru = '--';
 
-      if (status === 'cut') {
-        // Cut players: no today/thru
+      if (status === 'cut' || status === 'withdrawn') {
+        // Cut/withdrawn players: no today/thru
         today = '--';
         thru = '--';
       } else if (currentRoundLs) {

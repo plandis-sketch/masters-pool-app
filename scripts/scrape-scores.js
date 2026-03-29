@@ -64,16 +64,18 @@ function parsePosition(displayValue) {
 }
 
 function calculatePoints(position, status, cutPlayerCount, currentRound) {
-  if (status === 'cut') {
-    return (cutPlayerCount ?? 50) + 1;
-  }
+  const missedCutScore = (cutPlayerCount ?? 50) + 1;
+  if (status === 'cut') return missedCutScore;
   if (status === 'withdrawn') {
-    if (currentRound && currentRound >= 3) {
-      return cutPlayerCount ?? 50;
-    }
-    return (cutPlayerCount ?? 50) + 1;
+    if (currentRound && currentRound >= 3) return cutPlayerCount ?? 50;
+    return missedCutScore;
   }
-  return position ?? 999;
+  const rawPoints = position ?? 999;
+  // Safety cap: no golfer's score can exceed the missed-cut score once the cut is known
+  if (cutPlayerCount && cutPlayerCount > 0 && rawPoints > missedCutScore) {
+    return missedCutScore;
+  }
+  return rawPoints;
 }
 
 function normalizeName(name) {
@@ -307,11 +309,28 @@ async function scrapeAndUpdate() {
   }
   console.log(`Current round: ${espnRound}`);
 
-  let cutPlayerCount = tournament.cutPlayerCount;
+  // Count active competitors from ESPN for initial cut detection
   const activeCompetitors = competitors.filter(c => {
     const s = (c.status?.displayValue || '').toUpperCase();
     return !s || (s !== 'CUT' && s !== 'MC' && s !== 'WD' && s !== 'DQ');
   });
+
+  // Lock cutPlayerCount: once set in Firestore, never recalculate.
+  let cutPlayerCount = tournament.cutPlayerCount;
+  if (!cutPlayerCount && espnRound >= 3 && activeCompetitors.length > 0) {
+    cutPlayerCount = activeCompetitors.length;
+    await updateDoc(doc(db, 'tournaments', tournament.id), { cutPlayerCount });
+    console.log('Locked cutPlayerCount = ' + cutPlayerCount);
+  }
+
+  // Build set of golfer IDs already flagged as cut/withdrawn in Firestore.
+  // Once a player is marked cut, that status is permanent for the tournament.
+  const lockedCutGolferIds = new Set();
+  for (const [id, data] of existingScores) {
+    if (data.status === 'cut' || data.status === 'withdrawn') {
+      lockedCutGolferIds.add(id);
+    }
+  }
 
   const espnTeeTimeMap = new Map();
   for (const competitor of competitors) {
@@ -368,6 +387,14 @@ async function scrapeAndUpdate() {
       const posInfo = positionMap.get(competitor.id);
       position = posInfo?.position ?? competitor.order ?? null;
       status = 'active';
+    }
+
+    // Permanent lock: if this golfer was already marked cut/withdrawn in Firestore,
+    // never revert them back to active. ESPN data can be inconsistent across refreshes.
+    if (lockedCutGolferIds.has(golfer.id) && status === 'active') {
+      const prev = existingScores.get(golfer.id);
+      status = prev?.status || 'cut';
+      position = null;
     }
 
     const prevScore = existingScores.get(golfer.id);
@@ -530,12 +557,7 @@ async function scrapeAndUpdate() {
     console.log('Updated current round to ' + espnRound);
   }
 
-  if (activeCompetitors.length > 0 && espnRound >= 3 && !tournament.cutPlayerCount) {
-    await updateDoc(doc(db, 'tournaments', tournament.id), {
-      cutPlayerCount: activeCompetitors.length,
-    });
-    console.log('Set cut player count to ' + activeCompetitors.length);
-  }
+  // cutPlayerCount is locked earlier in the function — no need to re-set here
 
   if (eventState === 'post' && tournament.status !== 'complete') {
     await updateDoc(doc(db, 'tournaments', tournament.id), {

@@ -21,13 +21,15 @@ export default function Leaderboard() {
   const picksRevealed =
     tournament?.picksLocked || (firstTeeTime ? firstTeeTime.getTime() <= Date.now() : false);
 
-  // Auto-calculate cutPlayerCount: ESPN → Firestore → admin setting → default
+  // cutPlayerCount priority: Firestore (locked by scraper) → ESPN live → count active → default.
+  // Once the scraper locks cutPlayerCount in Firestore, that value is authoritative.
   const cutPlayerCount = useMemo(() => {
+    if (tournament?.cutPlayerCount && tournament.cutPlayerCount > 0) return tournament.cutPlayerCount;
     if (espnData && espnData.cutPlayerCount > 0) return espnData.cutPlayerCount;
     const activeInFirestore = scores.filter((s) => s.status === 'active').length;
     if (activeInFirestore > 0 && scores.some((s) => s.status === 'cut'))
       return activeInFirestore;
-    return tournament?.cutPlayerCount ?? 50;
+    return 50;
   }, [espnData, scores, tournament?.cutPlayerCount]);
 
   // Build maps from Firestore data (for pool scoring)

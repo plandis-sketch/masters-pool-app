@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useTournament, useTiers, useGolferScores, updateGolferScore } from '../../hooks/useTournament';
-import { calculateGolferPoints } from '../../constants/scoring';
+import { calculateGolferPoints, getMissedCutScore } from '../../constants/scoring';
 import { Timestamp } from 'firebase/firestore';
 import { Link, useNavigate } from 'react-router-dom';
 import TierBadge from '../../components/common/TierBadge';
@@ -101,6 +101,12 @@ export default function ScoreManagement() {
         </nav>
       </div>
 
+      {tournament?.cutPlayerCount ? (
+        <div className="mb-4 p-3 rounded-lg text-sm font-medium bg-blue-50 text-blue-700">
+          Cut locked: {tournament.cutPlayerCount} made the cut · Missed cut score = {getMissedCutScore(tournament.cutPlayerCount)}
+        </div>
+      ) : null}
+
       {message && (
         <div className={`mb-4 p-3 rounded-lg text-sm font-medium ${message.startsWith('Error') ? 'bg-red-50 text-red-700' : 'bg-green-50 text-green-700'}`}>
           {message}
@@ -187,7 +193,9 @@ export default function ScoreManagement() {
                       </select>
                     </td>
                     <td className="px-3 py-2 text-center font-bold text-masters-green">
-                      {existing?.points ?? '--'}
+                      {existing
+                        ? calculateGolferPoints(existing.position, existing.status, tournament?.cutPlayerCount ?? null)
+                        : '--'}
                     </td>
                     <td className="px-3 py-2">
                       <button

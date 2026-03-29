@@ -20,13 +20,14 @@ export default function MyEntries() {
   const teeTimePassed = firstTeeTime ? firstTeeTime.getTime() <= Date.now() : false;
   const isLocked = tournament?.picksLocked || teeTimePassed;
 
-  // Auto-calculate cutPlayerCount
+  // cutPlayerCount priority: Firestore (locked by scraper) → ESPN live → count active → default.
   const cutPlayerCount = useMemo(() => {
+    if (tournament?.cutPlayerCount && tournament.cutPlayerCount > 0) return tournament.cutPlayerCount;
     if (espnData && espnData.cutPlayerCount > 0) return espnData.cutPlayerCount;
     const activeInFirestore = scores.filter((s) => s.status === 'active').length;
     if (activeInFirestore > 0 && scores.some((s) => s.status === 'cut'))
       return activeInFirestore;
-    return tournament?.cutPlayerCount ?? 50;
+    return 50;
   }, [espnData, scores, tournament?.cutPlayerCount]);
 
   const scoreMap = useMemo(() => {
