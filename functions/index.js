@@ -239,10 +239,14 @@ async function scrapeAndUpdate() {
   }
   logger.info(`Current round: ${espnRound}`);
 
-  // Count active competitors from ESPN for initial cut detection
+  // Count active competitors from ESPN for initial cut detection.
+  // Use both status flag AND linescore count — ESPN doesn't always flag cut players.
   const activeCompetitors = competitors.filter((c) => {
     const s = (c.status?.displayValue || "").toUpperCase();
-    return !s || (s !== "CUT" && s !== "MC" && s !== "WD" && s !== "DQ");
+    if (s === "CUT" || s === "MC" || s === "WD" || s === "DQ") return false;
+    // If R3+, players with < 3 linescores missed the cut
+    if (espnRound >= 3 && (c.linescores || []).length < 3) return false;
+    return true;
   });
 
   // Lock cutPlayerCount: once set in Firestore, never recalculate.
@@ -315,6 +319,16 @@ async function scrapeAndUpdate() {
       const posInfo = positionMap.get(competitor.id);
       position = posInfo?.position ?? competitor.order ?? null;
       status = "active";
+    }
+
+    // Linescore-based cut detection: ESPN doesn't always flag cut players explicitly.
+    // If we're in R3+ and the player has fewer linescores than the current round, they missed the cut.
+    if (status === "active" && espnRound >= 3) {
+      const linescoreCount = (competitor.linescores || []).length;
+      if (linescoreCount < 3) {
+        status = "cut";
+        position = null;
+      }
     }
 
     // Permanent lock: if this golfer was already marked cut/withdrawn in Firestore,
