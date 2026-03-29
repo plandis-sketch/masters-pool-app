@@ -9,6 +9,7 @@ import Draft from './pages/Draft';
 import MyEntries from './pages/MyEntries';
 import Profile from './pages/Profile';
 import Settings from './pages/Settings';
+import DailyLeaderboard from './pages/DailyLeaderboard';
 import AdminLogin from './pages/AdminLogin';
 import TournamentSetup from './pages/admin/TournamentSetup';
 import ScoreManagement from './pages/admin/ScoreManagement';
@@ -65,6 +66,7 @@ function AppRoutes() {
       {/* Protected routes */}
       <Route element={<RequireAuth><Layout /></RequireAuth>}>
         <Route path="/leaderboard" element={<Leaderboard />} />
+        <Route path="/daily" element={<DailyLeaderboard />} />
         <Route path="/draft" element={<Draft />} />
         <Route path="/my-entries" element={<MyEntries />} />
         <Route path="/settings" element={<Settings />} />

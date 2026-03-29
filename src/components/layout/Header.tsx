@@ -22,6 +22,9 @@ export default function Header() {
               <Link to="/leaderboard" className={`px-2 py-1 rounded transition ${isActive('/leaderboard')}`}>
                 Leaderboard
               </Link>
+              <Link to="/daily" className={`px-2 py-1 rounded transition ${isActive('/daily')}`}>
+                Daily
+              </Link>
               <Link to="/draft" className={`px-2 py-1 rounded transition ${isActive('/draft')}`}>
                 Draft
               </Link>

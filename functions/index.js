@@ -481,6 +481,47 @@ async function scrapeAndUpdate() {
   }
 
   logger.info(`Updated ${matched} golfer scores. ${missingCount} marked withdrawn. ${entryUpdates} entry totals updated.`);
+
+  // --- Daily Leaderboard Snapshots ---
+  for (let round = 1; round <= 4; round++) {
+    const roundComplete =
+      (round < espnRound) ||
+      (round === espnRound && eventState === "post");
+    if (!roundComplete) continue;
+
+    const snapshotRef = db.collection("tournaments").doc(tournament.id)
+      .collection("dailyLeaderboards").doc("round" + round);
+    const existing = await snapshotRef.get();
+    if (existing.exists) continue;
+
+    const entryStandings = allEntries.map((entry) => {
+      const pickIds = [entry.picks?.tier1, entry.picks?.tier2, entry.picks?.tier3,
+                       entry.picks?.tier4, entry.picks?.tier5, entry.picks?.tier6];
+      const golfers = pickIds.map((id) => {
+        const score = fullScoreMap.get(id);
+        return {
+          id,
+          name: score?.name || allGolfers.find((g) => g.id === id)?.name || "Unknown",
+          points: score?.points ?? 0,
+          score: score?.score || "--",
+          status: score?.status || "active",
+        };
+      });
+      const totalScore = golfers.reduce((sum, g) => sum + g.points, 0);
+      return { entryId: entry.id, participantName: entry.participantName || "",
+               entryLabel: entry.entryLabel || entry.participantName || "", totalScore, golfers };
+    });
+
+    entryStandings.sort((a, b) => a.totalScore - b.totalScore);
+    const top10 = entryStandings.slice(0, 10);
+
+    await snapshotRef.set({
+      round,
+      standings: top10,
+      snapshotAt: Timestamp.now(),
+    });
+    logger.info(`Saved Daily Leaderboard snapshot for Round ${round}`);
+  }
 }
 
 // --- Scheduled function: runs every 5 minutes ---

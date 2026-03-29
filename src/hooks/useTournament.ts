@@ -10,7 +10,7 @@ import {
   addDoc,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import type { Tournament, Tier, GolferScore, Entry } from '../lib/types';
+import type { Tournament, Tier, GolferScore, Entry, DailyStanding } from '../lib/types';
 
 // Get the active tournament (most recent one)
 export function useTournament() {
@@ -89,6 +89,28 @@ export function useEntries(tournamentId: string | undefined) {
   }, [tournamentId]);
 
   return { entries, loading };
+}
+
+// Get daily leaderboard snapshots
+export function useDailyLeaderboards(tournamentId: string | undefined) {
+  const [dailyLeaderboards, setDailyLeaderboards] = useState<DailyStanding[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!tournamentId) { setLoading(false); return; }
+    const unsub = onSnapshot(
+      collection(db, 'tournaments', tournamentId, 'dailyLeaderboards'),
+      (snap) => {
+        setDailyLeaderboards(
+          snap.docs.map((d) => ({ id: d.id, ...d.data() } as DailyStanding))
+        );
+        setLoading(false);
+      }
+    );
+    return unsub;
+  }, [tournamentId]);
+
+  return { dailyLeaderboards, loading };
 }
 
 // Admin: Create tournament

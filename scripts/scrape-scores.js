@@ -12,7 +12,7 @@
 
 import { initializeApp } from 'firebase/app';
 import {
-  getFirestore, collection, doc, setDoc, getDocs, getDoc, updateDoc, addDoc,
+  getFirestore, collection, doc, setDoc, getDocs, getDoc, updateDoc, addDoc, deleteDoc,
   query, orderBy, Timestamp
 } from 'firebase/firestore';
 import { readFileSync } from 'fs';
@@ -631,6 +631,56 @@ async function scrapeAndUpdate() {
   console.log('Updated ' + matched + ' golfer scores (' + (competitors.length - matched) + ' ESPN golfers not in our pool)');
   if (missingCount > 0) console.log('Marked ' + missingCount + ' roster golfers as withdrawn (not in ESPN field)');
   if (entryUpdates > 0) console.log('Updated ' + entryUpdates + ' entry totals');
+
+  // --- Daily Leaderboard Snapshots ---
+  // Check if any completed rounds need a snapshot saved.
+  // A round N is complete if espnRound > N, or if N == espnRound and eventState == 'post'.
+  for (let round = 1; round <= 4; round++) {
+    const roundComplete =
+      (round < espnRound) ||
+      (round === espnRound && eventState === 'post');
+    if (!roundComplete) continue;
+
+    const snapshotRef = doc(db, 'tournaments', tournament.id, 'dailyLeaderboards', 'round' + round);
+    const existing = await getDoc(snapshotRef);
+    if (existing.exists()) continue; // Already saved — don't overwrite
+
+    // Build entry standings using current scores
+    const entryStandings = allEntries.map(entry => {
+      const pickIds = [entry.picks?.tier1, entry.picks?.tier2, entry.picks?.tier3,
+                       entry.picks?.tier4, entry.picks?.tier5, entry.picks?.tier6];
+      const golfers = pickIds.map(id => {
+        const score = updatedScoreMap.get(id);
+        return {
+          id,
+          name: score?.name || allGolfers.find(g => g.id === id)?.name || 'Unknown',
+          points: score?.points ?? 0,
+          score: score?.score || '--',
+          status: score?.status || 'active',
+        };
+      });
+      const totalScore = golfers.reduce((sum, g) => sum + g.points, 0);
+      return {
+        entryId: entry.id,
+        participantName: entry.participantName || '',
+        entryLabel: entry.entryLabel || entry.participantName || '',
+        totalScore,
+        golfers,
+      };
+    });
+
+    // Sort by total (lowest wins) and take top 10
+    entryStandings.sort((a, b) => a.totalScore - b.totalScore);
+    const top10 = entryStandings.slice(0, 10);
+
+    await setDoc(snapshotRef, {
+      round,
+      standings: top10,
+      snapshotAt: Timestamp.now(),
+    });
+    console.log('Saved Daily Leaderboard snapshot for Round ' + round + ' (top ' + top10.length + ' entries)');
+  }
+
   console.log('Done!');
 }
 

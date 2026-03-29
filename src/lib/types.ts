@@ -85,13 +85,25 @@ export interface Entry {
   submittedAt: Timestamp;
 }
 
+export interface DailyGolferSnapshot {
+  id: string;
+  name: string;
+  points: number;
+  score: string;
+  status: 'active' | 'cut' | 'withdrawn';
+}
+
+export interface DailyStandingEntry {
+  entryId: string;
+  participantName: string;
+  entryLabel: string;
+  totalScore: number;
+  golfers: DailyGolferSnapshot[];
+}
+
 export interface DailyStanding {
+  id: string;
   round: number;
-  standings: {
-    entryId: string;
-    participantName: string;
-    entryLabel: string;
-    totalScore: number;
-  }[];
+  standings: DailyStandingEntry[];
   snapshotAt: Timestamp;
 }
