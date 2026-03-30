@@ -1,6 +1,5 @@
 import { useState, useMemo } from 'react';
 import { useTournament, useDailyLeaderboards } from '../hooks/useTournament';
-import TierBadge from '../components/common/TierBadge';
 
 const DAY_LABELS = ['Day 1', 'Day 2', 'Day 3', 'Final Day'];
 const DAY_DESCRIPTIONS = [
