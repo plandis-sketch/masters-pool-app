@@ -6,6 +6,12 @@ import { calculateGolferPoints } from '../constants/scoring';
 import TierBadge from '../components/common/TierBadge';
 import { useNavigate } from 'react-router-dom';
 
+function ordinal(n: number): string {
+  const v = n % 100;
+  const s = ['th', 'st', 'nd', 'rd'];
+  return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
 export default function MyEntries() {
   const { user } = useAuth();
   const { tournament } = useTournament();
@@ -76,6 +82,34 @@ export default function MyEntries() {
       .sort((a, b) => a.entryNumber - b.entryNumber);
   }, [entries, user, scoreMap, golferNameMap, golferTierMap]);
 
+  // Pool position map: tie-aware positions across ALL entries (matches Pool Standings ranking)
+  const poolPositionMap = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!isLocked) return map;
+    const allScored = entries
+      .map((entry) => {
+        const pickIds = [
+          entry.picks.tier1,
+          entry.picks.tier2,
+          entry.picks.tier3,
+          entry.picks.tier4,
+          entry.picks.tier5,
+          entry.picks.tier6,
+        ];
+        const totalScore = pickIds.reduce((sum, id) => sum + (scoreMap.get(id)?.points ?? 0), 0);
+        return { id: entry.id, totalScore };
+      })
+      .sort((a, b) => a.totalScore - b.totalScore);
+    allScored.forEach((entry, idx) => {
+      if (idx === 0 || entry.totalScore !== allScored[idx - 1].totalScore) {
+        map.set(entry.id, idx + 1);
+      } else {
+        map.set(entry.id, map.get(allScored[idx - 1].id)!);
+      }
+    });
+    return map;
+  }, [entries, scoreMap, isLocked]);
+
   if (!tournament) {
     return <div className="text-center py-12 text-gray-500">No active tournament.</div>;
   }
@@ -136,19 +170,48 @@ export default function MyEntries() {
       ) : (
         <div className="space-y-4">
           {myEntries.map((entry) => (
-            <div key={entry.id} className="bg-white rounded-xl shadow-sm overflow-hidden">
+            <div
+              key={entry.id}
+              className={`bg-white rounded-xl shadow-sm overflow-hidden ${
+                isLocked && (poolPositionMap.get(entry.id) ?? 0) <= 3
+                  ? 'ring-2 ring-masters-yellow'
+                  : ''
+              }`}
+            >
               <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                 <div className="flex items-center gap-3">
-                  <span className="font-semibold text-gray-900">{entry.entryLabel}</span>
-                  <span
-                    className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                      entry.paid
-                        ? 'bg-green-100 text-green-700'
-                        : 'bg-yellow-100 text-yellow-700'
-                    }`}
-                  >
-                    {entry.paid ? 'Paid' : 'Unpaid'}
-                  </span>
+                  {isLocked && (() => {
+                    const pos = poolPositionMap.get(entry.id) ?? 0;
+                    return (
+                      <span
+                        className={`w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold shrink-0 ${
+                          pos === 1
+                            ? 'bg-masters-yellow text-gray-900'
+                            : pos === 2
+                              ? 'bg-gray-300 text-gray-700'
+                              : pos === 3
+                                ? 'bg-orange-300 text-gray-800'
+                                : 'bg-gray-100 text-gray-500'
+                        }`}
+                      >
+                        {ordinal(pos)}
+                      </span>
+                    );
+                  })()}
+                  <div>
+                    <span className="font-semibold text-gray-900">{entry.entryLabel}</span>
+                    <div className="flex items-center gap-2 mt-0.5">
+                      <span
+                        className={`text-xs px-2 py-0.5 rounded-full font-medium ${
+                          entry.paid
+                            ? 'bg-green-100 text-green-700'
+                            : 'bg-yellow-100 text-yellow-700'
+                        }`}
+                      >
+                        {entry.paid ? 'Paid' : 'Unpaid'}
+                      </span>
+                    </div>
+                  </div>
                 </div>
                 <div className="flex items-center gap-3">
                   {!isLocked && (

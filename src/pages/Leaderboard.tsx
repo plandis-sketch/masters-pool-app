@@ -89,6 +89,19 @@ export default function Leaderboard() {
       .sort((a, b) => a.totalScore - b.totalScore);
   }, [visibleEntries, scoreMap, golferNameMap, golferTierMap]);
 
+  // Tie-aware display positions for Pool Standings
+  const rankedPositions = useMemo(() => {
+    const positions: number[] = [];
+    rankedEntries.forEach((entry, idx) => {
+      if (idx === 0 || entry.totalScore !== rankedEntries[idx - 1].totalScore) {
+        positions.push(idx + 1);
+      } else {
+        positions.push(positions[idx - 1]);
+      }
+    });
+    return positions;
+  }, [rankedEntries]);
+
   // ESPN golfer data with pool points
   const espnGolfers = useMemo(() => {
     if (!espnData) return [];
@@ -182,7 +195,8 @@ export default function Leaderboard() {
             </p>
           ) : (
             rankedEntries.map((entry, idx) => {
-              const isTop3 = idx < 3 && picksRevealed;
+              const pos = rankedPositions[idx];
+              const isTop3 = pos <= 3 && picksRevealed;
               return (
                 <div
                   key={entry.id}
@@ -195,16 +209,16 @@ export default function Leaderboard() {
                       {picksRevealed && (
                         <span
                           className={`w-8 h-8 rounded-full flex items-center justify-center text-sm font-bold ${
-                            idx === 0
+                            pos === 1
                               ? 'bg-masters-yellow text-gray-900'
-                              : idx === 1
+                              : pos === 2
                                 ? 'bg-gray-300 text-gray-700'
-                                : idx === 2
+                                : pos === 3
                                   ? 'bg-orange-300 text-gray-800'
                                   : 'bg-gray-100 text-gray-500'
                           }`}
                         >
-                          {idx + 1}
+                          {pos}
                         </span>
                       )}
                       <div>
