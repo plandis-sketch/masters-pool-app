@@ -9,7 +9,7 @@ export default function Settings() {
       <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-2">Payment Information</h2>
         <p className="text-sm text-gray-600 mb-4">
-          ${ENTRY_FEE} per entry. Payments due by midnight, Wednesday, March 25th.
+          ${ENTRY_FEE} per entry. Payments due by midnight, Wednesday, April 1st.
         </p>
         <div className="bg-masters-cream rounded-xl p-5">
           <div className="space-y-3">
@@ -75,7 +75,7 @@ export default function Settings() {
             <span className="text-masters-green font-bold shrink-0">&bull;</span>
             <span>
               Payments can be made via Venmo (preferred), PayPal, Cash App, or Zelle up until midnight,
-              Wednesday, March 25th.
+              Wednesday, April 1st.
             </span>
           </li>
           <li className="flex gap-2">
