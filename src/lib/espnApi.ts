@@ -50,15 +50,31 @@ export async function fetchLeaderboard(): Promise<EspnTournamentData | null> {
     if (!res.ok) return null;
     const data = await res.json();
 
-    // Find the current/in-progress event
-    // Prefer 'in' (live) → 'pre' (upcoming) → 'post' (completed) so that a just-ended
-    // tournament (Houston Open post) doesn't shadow the next upcoming event (Valero pre).
+    // Find the Valero Texas Open event specifically.
+    // Prefer 'in' (live) → 'pre' (upcoming) — never fall back to a 'post' (completed)
+    // event from a different tournament (e.g. Houston Open).
     const events = data.events || [];
-    const event =
-      events.find((e: any) => e.status?.type?.state === 'in') ||
-      events.find((e: any) => e.status?.type?.state === 'pre') ||
-      events.find((e: any) => e.status?.type?.state === 'post') ||
-      events[0];
+
+    const isValero = (e: any) => {
+      const name = (e.name || e.shortName || '').toLowerCase();
+      return name.includes('valero') || name.includes('texas open');
+    };
+
+    // First try: exact name match
+    let event =
+      events.find((e: any) => isValero(e) && e.status?.type?.state === 'in') ||
+      events.find((e: any) => isValero(e) && e.status?.type?.state === 'pre') ||
+      events.find((e: any) => isValero(e));
+
+    // Fallback: any in/pre event (but NOT post from a different tournament)
+    if (!event) {
+      event =
+        events.find((e: any) => e.status?.type?.state === 'in') ||
+        events.find((e: any) => e.status?.type?.state === 'pre');
+    }
+
+    // If the only available event is 'post' (completed prior tournament), return null
+    // so the UI shows the pre-tournament roster instead.
     if (!event) return null;
 
     const comp = event.competitions?.[0];

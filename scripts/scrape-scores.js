@@ -197,14 +197,13 @@ async function scrapeAndUpdate() {
     e.name?.toLowerCase().includes('texas open') ||
     e.shortName?.toLowerCase().includes('texas open')
   );
-  if (!event && events.length > 0) {
-    event = events[0];
-    console.log(`Using event: ${event.name || event.shortName}`);
-  }
   if (!event) {
-    console.log('No matching event found on ESPN. Tournament may not have started yet.');
+    // Do NOT fall back to events[0] — that could pick up a completed prior tournament
+    // (e.g. Houston Open) and write its data into the Valero Firestore documents.
+    console.log('Valero Texas Open not found on ESPN yet. Tournament may not have started. Skipping.');
     return;
   }
+  console.log(`Using event: ${event.name || event.shortName}`);
 
   const competitions = event.competitions || [];
   if (competitions.length === 0) {

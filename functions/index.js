@@ -147,14 +147,12 @@ async function scrapeAndUpdate() {
     e.name?.toLowerCase().includes("texas open") ||
     e.shortName?.toLowerCase().includes("texas open")
   );
-  if (!event && events.length > 0) {
-    event = events[0];
-    logger.info(`Using event: ${event.name || event.shortName}`);
-  }
   if (!event) {
-    logger.info("No matching event found on ESPN.");
+    // Do NOT fall back to events[0] — that could pick up a completed prior tournament.
+    logger.info("Valero Texas Open not found on ESPN yet. Skipping.");
     return;
   }
+  logger.info(`Using event: ${event.name || event.shortName}`);
 
   const competitions = event.competitions || [];
   if (competitions.length === 0) {
