@@ -142,8 +142,10 @@ async function scrapeAndUpdate() {
 
   const events = espnData.events || [];
   let event = events.find((e) =>
-    e.name?.toLowerCase().includes("valspar") ||
-    e.shortName?.toLowerCase().includes("valspar")
+    e.name?.toLowerCase().includes("valero") ||
+    e.shortName?.toLowerCase().includes("valero") ||
+    e.name?.toLowerCase().includes("texas open") ||
+    e.shortName?.toLowerCase().includes("texas open")
   );
   if (!event && events.length > 0) {
     event = events[0];

@@ -1,5 +1,5 @@
 /**
- * Automatic Score Scraper — Valspar Championship 2026
+ * Automatic Score Scraper — Valero Texas Open 2026
  *
  * Fetches live scores from ESPN's Golf API and writes to Firestore.
  * Also auto-locks picks when firstTeeTime has passed.
@@ -192,8 +192,10 @@ async function scrapeAndUpdate() {
 
   const events = espnData.events || [];
   let event = events.find(e =>
-    e.name?.toLowerCase().includes('valspar') ||
-    e.shortName?.toLowerCase().includes('valspar')
+    e.name?.toLowerCase().includes('valero') ||
+    e.shortName?.toLowerCase().includes('valero') ||
+    e.name?.toLowerCase().includes('texas open') ||
+    e.shortName?.toLowerCase().includes('texas open')
   );
   if (!event && events.length > 0) {
     event = events[0];

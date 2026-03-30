@@ -254,11 +254,50 @@ export default function Leaderboard() {
               <p className="text-gray-400 mt-3">Loading tournament leaderboard...</p>
             </div>
           ) : !espnData || espnData.golfers.length === 0 ? (
-            <div className="text-center py-12">
-              <p className="text-gray-400">
-                Tournament leaderboard will appear here once the tournament begins.
-              </p>
-            </div>
+            /* Pre-tournament: show full pool roster from tiers with blank scoring */
+            (() => {
+              const allTierGolfers = tiers.flatMap((t) =>
+                t.golfers.map((g) => ({ ...g, tierNumber: t.tierNumber }))
+              );
+              if (allTierGolfers.length === 0) return null;
+              return (
+                <>
+                  <div className="px-4 py-2 bg-gray-50 border-b text-xs text-gray-500 flex justify-between items-center">
+                    <span>{tournament.name} &mdash; {allTierGolfers.length} golfers (pool field)</span>
+                    <span className="text-gray-400">Tee times TBA &mdash; scores will appear once Round 1 begins</span>
+                  </div>
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
+                      <thead className="bg-masters-green text-white">
+                        <tr>
+                          <th className="text-left px-4 py-3">#</th>
+                          <th className="text-left px-4 py-3">Golfer</th>
+                          <th className="text-center px-4 py-3">Score</th>
+                          <th className="text-center px-4 py-3">Today</th>
+                          <th className="text-center px-4 py-3">Thru</th>
+                          <th className="text-center px-4 py-3">Pts</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {allTierGolfers.map((g, idx) => (
+                          <tr
+                            key={g.id}
+                            className={idx % 2 === 0 ? 'bg-white border-b border-gray-100' : 'bg-gray-50 border-b border-gray-100'}
+                          >
+                            <td className="px-4 py-2.5 text-gray-400">{idx + 1}</td>
+                            <td className="px-4 py-2.5 font-medium text-gray-900">{g.name}</td>
+                            <td className="px-4 py-2.5 text-center text-gray-400">--</td>
+                            <td className="px-4 py-2.5 text-center text-gray-400">--</td>
+                            <td className="px-4 py-2.5 text-center text-gray-400">--</td>
+                            <td className="px-4 py-2.5 text-center text-gray-400">--</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </>
+              );
+            })()
           ) : (
             <>
               <div className="px-4 py-2 bg-gray-50 border-b text-xs text-gray-500 flex justify-between items-center">

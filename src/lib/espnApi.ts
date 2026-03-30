@@ -51,9 +51,12 @@ export async function fetchLeaderboard(): Promise<EspnTournamentData | null> {
     const data = await res.json();
 
     // Find the current/in-progress event
+    // Prefer 'in' (live) → 'pre' (upcoming) → 'post' (completed) so that a just-ended
+    // tournament (Houston Open post) doesn't shadow the next upcoming event (Valero pre).
     const events = data.events || [];
     const event =
       events.find((e: any) => e.status?.type?.state === 'in') ||
+      events.find((e: any) => e.status?.type?.state === 'pre') ||
       events.find((e: any) => e.status?.type?.state === 'post') ||
       events[0];
     if (!event) return null;
