@@ -23,7 +23,6 @@ export default function Draft() {
 
   const [picks, setPicks] = useState<Record<string, string>>({});
   const [submitting, setSubmitting] = useState(false);
-  const [saveStatus, setSaveStatus] = useState<'idle' | 'saved' | 'error'>('idle');
   const [error, setError] = useState('');
 
   // Entry being edited (if any)
@@ -43,7 +42,6 @@ export default function Draft() {
         tier5: editingEntry.picks.tier5,
         tier6: editingEntry.picks.tier6,
       });
-      setSaveStatus('idle');
     }
   }, [editingEntry]);
 
@@ -60,14 +58,12 @@ export default function Draft() {
   const handlePick = (tierNumber: number, golferId: string) => {
     if (isLocked) return;
     setPicks((prev) => ({ ...prev, [`tier${tierNumber}`]: golferId }));
-    setSaveStatus('idle');
   };
 
   const handleSubmit = async () => {
     if (!tournament || !user || !allTiersPicked) return;
     setSubmitting(true);
     setError('');
-    setSaveStatus('idle');
 
     const picksData = {
       tier1: picks.tier1,
@@ -93,10 +89,9 @@ export default function Draft() {
           submittedAt: Timestamp.now(),
         });
       }
-      setSaveStatus('saved');
+      navigate('/my-entries');
     } catch (err: any) {
       setError(err.message || 'Failed to submit entry.');
-      setSaveStatus('error');
     } finally {
       setSubmitting(false);
     }
@@ -149,36 +144,6 @@ export default function Draft() {
         </div>
       )}
 
-      {saveStatus === 'saved' && (
-        <div className="bg-green-50 border border-green-200 rounded-xl p-4 mb-6">
-          <p className="text-green-800 font-semibold">
-            {editingEntry ? 'Picks updated!' : 'Entry submitted!'}
-          </p>
-          <p className="text-green-600 text-sm mt-1">
-            Your picks have been saved. You can still edit them until the deadline.
-          </p>
-          <div className="flex gap-3 mt-3">
-            <button
-              onClick={() => navigate('/my-entries')}
-              className="bg-masters-green text-white px-4 py-2 rounded-lg text-sm font-semibold hover:bg-masters-dark transition"
-            >
-              View My Entries
-            </button>
-            {!editingEntry && (
-              <button
-                onClick={() => {
-                  setPicks({});
-                  setSaveStatus('idle');
-                }}
-                className="bg-white text-masters-green px-4 py-2 rounded-lg text-sm font-semibold border border-masters-green hover:bg-green-50 transition"
-              >
-                Submit Another Entry
-              </button>
-            )}
-          </div>
-        </div>
-      )}
-
       <div className="space-y-6">
         {tiers.map((tier) => {
           const tierConfig = TIER_COLORS[tier.tierNumber - 1];
@@ -222,7 +187,7 @@ export default function Draft() {
         <div className="mt-4 bg-red-50 text-red-600 text-sm rounded-lg p-3">{error}</div>
       )}
 
-      {!isLocked && tiers.length > 0 && saveStatus !== 'saved' && (
+      {!isLocked && tiers.length > 0 && (
         <div className="mt-8 sticky bottom-4">
           <button
             onClick={handleSubmit}
