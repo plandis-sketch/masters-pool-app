@@ -18,13 +18,20 @@ export function useTournament() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const unsub = onSnapshot(collection(db, 'tournaments'), (snap) => {
-      const tournaments = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Tournament));
-      // Pick the most recent active one, or just the first
-      const active = tournaments.find((t) => t.status !== 'complete') || tournaments[0] || null;
-      setTournament(active);
-      setLoading(false);
-    });
+    const unsub = onSnapshot(
+      collection(db, 'tournaments'),
+      (snap) => {
+        const tournaments = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Tournament));
+        // Pick the most recent active one, or just the first
+        const active = tournaments.find((t) => t.status !== 'complete') || tournaments[0] || null;
+        setTournament(active);
+        setLoading(false);
+      },
+      (err) => {
+        console.error('[useTournament] snapshot error:', err);
+        setLoading(false);
+      }
+    );
     return unsub;
   }, []);
 
@@ -42,6 +49,10 @@ export function useTiers(tournamentId: string | undefined) {
       query(collection(db, 'tournaments', tournamentId, 'tiers'), orderBy('tierNumber')),
       (snap) => {
         setTiers(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Tier)));
+        setLoading(false);
+      },
+      (err) => {
+        console.error('[useTiers] snapshot error:', err);
         setLoading(false);
       }
     );
@@ -63,6 +74,10 @@ export function useGolferScores(tournamentId: string | undefined) {
       (snap) => {
         setScores(snap.docs.map((d) => ({ id: d.id, ...d.data() } as GolferScore)));
         setLoading(false);
+      },
+      (err) => {
+        console.error('[useGolferScores] snapshot error:', err);
+        setLoading(false);
       }
     );
     return unsub;
@@ -82,6 +97,10 @@ export function useEntries(tournamentId: string | undefined) {
       collection(db, 'tournaments', tournamentId, 'entries'),
       (snap) => {
         setEntries(snap.docs.map((d) => ({ id: d.id, ...d.data() } as Entry)));
+        setLoading(false);
+      },
+      (err) => {
+        console.error('[useEntries] snapshot error:', err);
         setLoading(false);
       }
     );
@@ -104,6 +123,10 @@ export function useDailyLeaderboards(tournamentId: string | undefined) {
         setDailyLeaderboards(
           snap.docs.map((d) => ({ id: d.id, ...d.data() } as DailyStanding))
         );
+        setLoading(false);
+      },
+      (err) => {
+        console.error('[useDailyLeaderboards] snapshot error:', err);
         setLoading(false);
       }
     );
