@@ -61,7 +61,11 @@ export default function Draft() {
   };
 
   const handleSubmit = async () => {
-    if (!tournament || !user || !allTiersPicked) return;
+    console.log('[Draft] handleSubmit called', { tournament: !!tournament, user: !!user, allTiersPicked });
+    if (!tournament || !user || !allTiersPicked) {
+      console.log('[Draft] guard returned early — tournament:', tournament?.id, 'user:', user?.uid, 'allTiersPicked:', allTiersPicked);
+      return;
+    }
     setSubmitting(true);
     setError('');
 
@@ -75,6 +79,7 @@ export default function Draft() {
     };
 
     try {
+      console.log('[Draft] starting Firestore write, editingEntry:', editingEntry?.id ?? 'none');
       if (editingEntry) {
         await updateEntry(tournament.id, editingEntry.id, { picks: picksData });
       } else {
@@ -89,8 +94,11 @@ export default function Draft() {
           submittedAt: Timestamp.now(),
         });
       }
+      console.log('[Draft] Firestore write succeeded — calling navigate(/my-entries)');
       navigate('/my-entries');
+      console.log('[Draft] navigate called');
     } catch (err: any) {
+      console.error('[Draft] caught error:', err);
       setError(err.message || 'Failed to submit entry.');
     } finally {
       setSubmitting(false);
