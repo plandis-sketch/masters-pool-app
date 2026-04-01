@@ -41,6 +41,32 @@ export default function Settings() {
         </div>
       </div>
 
+      {/* Contact */}
+      <div className="bg-white rounded-xl shadow-sm p-6 mb-6">
+        <h2 className="text-lg font-semibold text-gray-900 mb-1">Questions?</h2>
+        <p className="text-sm text-gray-500 mb-4">Reach out to Phil directly.</p>
+        <div className="space-y-3">
+          <div className="flex items-center justify-between">
+            <span className="text-gray-600 font-medium">Phone</span>
+            <a
+              href="tel:+17179032280"
+              className="font-mono text-masters-green font-semibold hover:underline"
+            >
+              (717) 903-2280
+            </a>
+          </div>
+          <div className="flex items-center justify-between">
+            <span className="text-gray-600 font-medium">Email</span>
+            <a
+              href="mailto:itsphil24@gmail.com"
+              className="font-mono text-masters-green font-semibold hover:underline"
+            >
+              itsphil24@gmail.com
+            </a>
+          </div>
+        </div>
+      </div>
+
       {/* Pool Instructions */}
       <div className="bg-white rounded-xl shadow-sm p-6">
         <h2 className="text-lg font-semibold text-gray-900 mb-4">Pool Instructions</h2>

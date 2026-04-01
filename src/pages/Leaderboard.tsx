@@ -256,9 +256,13 @@ export default function Leaderboard() {
           ) : !espnData || espnData.golfers.length === 0 ? (
             /* Pre-tournament: show full pool roster from tiers with blank scoring */
             (() => {
-              const allTierGolfers = tiers.flatMap((t) =>
-                t.golfers.map((g) => ({ ...g, tierNumber: t.tierNumber }))
-              );
+              const allTierGolfers = tiers
+                .flatMap((t) => t.golfers.map((g) => ({ ...g, tierNumber: t.tierNumber })))
+                .sort((a, b) => {
+                  const aWD = scoreMap.get(a.id)?.status === 'withdrawn' ? 1 : 0;
+                  const bWD = scoreMap.get(b.id)?.status === 'withdrawn' ? 1 : 0;
+                  return aWD - bWD;
+                });
               if (allTierGolfers.length === 0) return null;
               return (
                 <>
