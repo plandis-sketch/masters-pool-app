@@ -284,19 +284,19 @@ export default function MyEntries() {
               </div>
               <div className="px-4 py-3 space-y-2">
                 {entry.golferDetails.map((g) => (
-                  <div key={g.id} className="flex items-center justify-between text-sm">
-                    <div className="flex items-center gap-2">
+                  <div key={g.id} className="flex items-center gap-2 text-sm">
+                    <div className="flex items-center gap-2 min-w-0 flex-1">
                       <TierBadge tierNumber={g.tier} size="sm" />
                       {g.status === 'withdrawn' ? (
-                        <span className="flex items-center gap-1.5">
-                          <span className="text-gray-400 line-through">{g.name}</span>
-                          <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-semibold">WD</span>
+                        <span className="flex items-center gap-1.5 min-w-0">
+                          <span className="text-gray-400 line-through truncate">{g.name}</span>
+                          <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-semibold shrink-0">WD</span>
                         </span>
                       ) : (
-                        <span className="text-gray-700">{g.name}</span>
+                        <span className="text-gray-700 truncate">{g.name}</span>
                       )}
                     </div>
-                    <div className="flex items-center gap-3">
+                    <div className="flex items-center gap-3 shrink-0">
                       <span className="text-gray-400 text-xs">{g.score}</span>
                       <span className="font-semibold text-gray-900 w-8 text-right">
                         {g.points || '--'}

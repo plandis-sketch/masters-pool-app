@@ -231,10 +231,10 @@ export default function Leaderboard() {
                   </div>
                   <div className="px-4 py-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-xs">
                     {entry.golferDetails.map((g) => (
-                      <div key={g.id} className="flex items-center gap-1.5 text-gray-600">
+                      <div key={g.id} className="flex items-center gap-1.5 text-gray-600 min-w-0">
                         <TierBadge tierNumber={g.tier} size="sm" />
-                        <span className="truncate">{g.name}</span>
-                        <span className="font-semibold text-gray-900 ml-auto">
+                        <span className="truncate min-w-0 flex-1">{g.name}</span>
+                        <span className="font-semibold text-gray-900 shrink-0">
                           {g.points || '--'}
                         </span>
                       </div>
