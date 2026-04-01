@@ -50,31 +50,14 @@ export async function fetchLeaderboard(): Promise<EspnTournamentData | null> {
     if (!res.ok) return null;
     const data = await res.json();
 
-    // Find the Valero Texas Open event specifically.
-    // Prefer 'in' (live) → 'pre' (upcoming) — never fall back to a 'post' (completed)
-    // event from a different tournament (e.g. Houston Open).
+    // Find the current live or upcoming event.
+    // Prefer 'in' (live) → 'pre' (upcoming) — never use a 'post' (completed) event
+    // from a prior tournament, which would show stale/wrong scores.
     const events = data.events || [];
+    const event =
+      events.find((e: any) => e.status?.type?.state === 'in') ||
+      events.find((e: any) => e.status?.type?.state === 'pre');
 
-    const isValero = (e: any) => {
-      const name = (e.name || e.shortName || '').toLowerCase();
-      return name.includes('valero') || name.includes('texas open');
-    };
-
-    // First try: exact name match
-    let event =
-      events.find((e: any) => isValero(e) && e.status?.type?.state === 'in') ||
-      events.find((e: any) => isValero(e) && e.status?.type?.state === 'pre') ||
-      events.find((e: any) => isValero(e));
-
-    // Fallback: any in/pre event (but NOT post from a different tournament)
-    if (!event) {
-      event =
-        events.find((e: any) => e.status?.type?.state === 'in') ||
-        events.find((e: any) => e.status?.type?.state === 'pre');
-    }
-
-    // If the only available event is 'post' (completed prior tournament), return null
-    // so the UI shows the pre-tournament roster instead.
     if (!event) return null;
 
     const comp = event.competitions?.[0];

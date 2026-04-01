@@ -10,7 +10,7 @@ import {
   addDoc,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import type { Tournament, Tier, GolferScore, Entry, DailyStanding } from '../lib/types';
+import type { Tournament, Tier, GolferScore, Entry, DailyStanding, WithdrawalAlert } from '../lib/types';
 
 // Get the active tournament (most recent one)
 export function useTournament() {
@@ -108,6 +108,30 @@ export function useEntries(tournamentId: string | undefined) {
   }, [tournamentId]);
 
   return { entries, loading };
+}
+
+// Get withdrawal alerts for a tournament
+export function useWithdrawalAlerts(tournamentId: string | undefined) {
+  const [alerts, setAlerts] = useState<WithdrawalAlert[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    if (!tournamentId) { setLoading(false); return; }
+    const unsub = onSnapshot(
+      collection(db, 'tournaments', tournamentId, 'withdrawalAlerts'),
+      (snap) => {
+        setAlerts(snap.docs.map((d) => ({ id: d.id, ...d.data() } as WithdrawalAlert)));
+        setLoading(false);
+      },
+      (err) => {
+        console.error('[useWithdrawalAlerts] snapshot error:', err);
+        setLoading(false);
+      }
+    );
+    return unsub;
+  }, [tournamentId]);
+
+  return { alerts, loading };
 }
 
 // Get daily leaderboard snapshots

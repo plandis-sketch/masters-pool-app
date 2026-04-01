@@ -107,3 +107,14 @@ export interface DailyStanding {
   standings: DailyStandingEntry[];
   snapshotAt: Timestamp;
 }
+
+export interface WithdrawalAlert {
+  id: string;
+  golferId: string;
+  golferName: string;
+  tierNumber: number;
+  affectedEntryIds: string[];
+  swapDeadline: Timestamp;
+  status: 'active' | 'resolved';
+  createdAt: Timestamp;
+}

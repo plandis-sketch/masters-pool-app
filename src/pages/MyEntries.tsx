@@ -1,6 +1,6 @@
 import { useMemo } from 'react';
 import { useAuth } from '../hooks/useAuth';
-import { useTournament, useTiers, useGolferScores, useEntries } from '../hooks/useTournament';
+import { useTournament, useTiers, useGolferScores, useEntries, useWithdrawalAlerts } from '../hooks/useTournament';
 import { useEspnLeaderboard } from '../lib/espnApi';
 import { calculateGolferPoints } from '../constants/scoring';
 import TierBadge from '../components/common/TierBadge';
@@ -18,6 +18,7 @@ export default function MyEntries() {
   const { tiers } = useTiers(tournament?.id);
   const { scores } = useGolferScores(tournament?.id);
   const { entries } = useEntries(tournament?.id);
+  const { alerts } = useWithdrawalAlerts(tournament?.id);
   const { data: espnData } = useEspnLeaderboard();
   const navigate = useNavigate();
 
@@ -37,10 +38,10 @@ export default function MyEntries() {
   }, [espnData, scores, tournament?.cutPlayerCount]);
 
   const scoreMap = useMemo(() => {
-    const map = new Map<string, { points: number; score: string; position: number | null }>();
+    const map = new Map<string, { points: number; score: string; position: number | null; status: string }>();
     scores.forEach((s) => {
       const points = calculateGolferPoints(s.position, s.status, cutPlayerCount);
-      map.set(s.id, { points, score: s.score, position: s.position });
+      map.set(s.id, { points, score: s.score, position: s.position, status: s.status });
     });
     return map;
   }, [scores, cutPlayerCount]);
@@ -75,6 +76,7 @@ export default function MyEntries() {
           tier: golferTierMap.get(id) || 0,
           points: scoreMap.get(id)?.points ?? 0,
           score: scoreMap.get(id)?.score ?? '--',
+          status: scoreMap.get(id)?.status ?? 'active',
         }));
         const totalScore = golferDetails.reduce((sum, g) => sum + g.points, 0);
         return { ...entry, golferDetails, totalScore };
@@ -109,6 +111,33 @@ export default function MyEntries() {
     });
     return map;
   }, [entries, scoreMap, isLocked]);
+
+  // Active WD alerts per entry — only shown when the entry still has the withdrawn golfer picked
+  // and the swap deadline hasn't passed.
+  const activeAlertsByEntry = useMemo(() => {
+    const now = new Date();
+    const map = new Map<string, Array<{ golferName: string; tierNumber: number; deadline: Date; alertId: string }>>();
+    alerts.forEach((alert) => {
+      if (alert.status !== 'active') return;
+      const deadline = alert.swapDeadline?.toDate?.() || new Date(alert.swapDeadline as any);
+      if (deadline <= now) return;
+      alert.affectedEntryIds.forEach((entryId) => {
+        const entry = entries.find((e) => e.id === entryId);
+        if (!entry) return;
+        // Only show alert if the entry still has the withdrawn golfer picked
+        const tierKey = `tier${alert.tierNumber}` as keyof typeof entry.picks;
+        if (entry.picks[tierKey] !== alert.golferId) return;
+        if (!map.has(entryId)) map.set(entryId, []);
+        map.get(entryId)!.push({
+          golferName: alert.golferName,
+          tierNumber: alert.tierNumber,
+          deadline,
+          alertId: alert.id,
+        });
+      });
+    });
+    return map;
+  }, [alerts, entries]);
 
   if (!tournament) {
     return <div className="text-center py-12 text-gray-500">No active tournament.</div>;
@@ -178,6 +207,32 @@ export default function MyEntries() {
                   : ''
               }`}
             >
+              {/* WD notification banners */}
+              {activeAlertsByEntry.get(entry.id)?.map((alert) => {
+                const deadlineStr =
+                  alert.deadline.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }) +
+                  ' at ' +
+                  alert.deadline.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+                return (
+                  <div
+                    key={alert.alertId}
+                    className="bg-amber-50 border-b border-amber-200 px-4 py-3 flex items-start justify-between gap-3"
+                  >
+                    <div className="text-amber-800 text-sm">
+                      <span className="font-semibold">{alert.golferName}</span> has withdrawn.
+                      Please update your Tier {alert.tierNumber} pick before{' '}
+                      <span className="font-semibold">{deadlineStr}</span>.
+                    </div>
+                    <button
+                      onClick={() => navigate(`/draft?edit=${entry.id}&wdTier=${alert.tierNumber}`)}
+                      className="shrink-0 bg-amber-600 text-white text-xs font-semibold px-3 py-1.5 rounded-lg hover:bg-amber-700 transition"
+                    >
+                      Update Pick
+                    </button>
+                  </div>
+                );
+              })}
+
               <div className="flex items-center justify-between px-4 py-3 border-b border-gray-100">
                 <div className="flex items-center gap-3">
                   {isLocked && (() => {
@@ -232,7 +287,14 @@ export default function MyEntries() {
                   <div key={g.id} className="flex items-center justify-between text-sm">
                     <div className="flex items-center gap-2">
                       <TierBadge tierNumber={g.tier} size="sm" />
-                      <span className="text-gray-700">{g.name}</span>
+                      {g.status === 'withdrawn' ? (
+                        <span className="flex items-center gap-1.5">
+                          <span className="text-gray-400 line-through">{g.name}</span>
+                          <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-semibold">WD</span>
+                        </span>
+                      ) : (
+                        <span className="text-gray-700">{g.name}</span>
+                      )}
                     </div>
                     <div className="flex items-center gap-3">
                       <span className="text-gray-400 text-xs">{g.score}</span>

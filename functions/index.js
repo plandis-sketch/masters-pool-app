@@ -45,6 +45,15 @@ function normalizeName(name) {
     .trim();
 }
 
+// Generic ESPN event matcher — uses tournament name keywords, works for any tournament
+function eventMatchesTournament(espnEvent, tournamentName) {
+  const normalize = (s) => (s || "").toLowerCase().replace(/[^a-z0-9\s]/g, "");
+  const eventText = normalize(espnEvent.name || "") + " " + normalize(espnEvent.shortName || "");
+  const stopWords = new Set(["the", "at", "in", "of", "and", "for", "pga", "tour", "open", "2025", "2026", "2027"]);
+  const keywords = normalize(tournamentName).split(/\s+/).filter((w) => w.length >= 4 && !stopWords.has(w));
+  return keywords.length > 0 && keywords.some((kw) => eventText.includes(kw));
+}
+
 function findBestMatch(espnName, tierGolfers) {
   const normalized = normalizeName(espnName);
   for (const g of tierGolfers) {
@@ -141,15 +150,19 @@ async function scrapeAndUpdate() {
   }
 
   const events = espnData.events || [];
-  let event = events.find((e) =>
-    e.name?.toLowerCase().includes("valero") ||
-    e.shortName?.toLowerCase().includes("valero") ||
-    e.name?.toLowerCase().includes("texas open") ||
-    e.shortName?.toLowerCase().includes("texas open")
-  );
+  // Prefer a live/upcoming event matching our tournament name.
+  // Never fall back to a completed ('post') event from a different tournament.
+  let event =
+    events.find((e) => eventMatchesTournament(e, tournament.name) && e.status?.type?.state === "in") ||
+    events.find((e) => eventMatchesTournament(e, tournament.name) && e.status?.type?.state === "pre") ||
+    events.find((e) => eventMatchesTournament(e, tournament.name));
   if (!event) {
-    // Do NOT fall back to events[0] — that could pick up a completed prior tournament.
-    logger.info("Valero Texas Open not found on ESPN yet. Skipping.");
+    event =
+      events.find((e) => e.status?.type?.state === "in") ||
+      events.find((e) => e.status?.type?.state === "pre");
+  }
+  if (!event) {
+    logger.info(`No matching event found on ESPN for "${tournament.name}". Skipping.`);
     return;
   }
   logger.info(`Using event: ${event.name || event.shortName}`);

@@ -279,19 +279,34 @@ export default function Leaderboard() {
                         </tr>
                       </thead>
                       <tbody>
-                        {allTierGolfers.map((g, idx) => (
-                          <tr
-                            key={g.id}
-                            className={idx % 2 === 0 ? 'bg-white border-b border-gray-100' : 'bg-gray-50 border-b border-gray-100'}
-                          >
-                            <td className="px-4 py-2.5 text-gray-400">{idx + 1}</td>
-                            <td className="px-4 py-2.5 font-medium text-gray-900">{g.name}</td>
-                            <td className="px-4 py-2.5 text-center text-gray-400">--</td>
-                            <td className="px-4 py-2.5 text-center text-gray-400">--</td>
-                            <td className="px-4 py-2.5 text-center text-gray-400">--</td>
-                            <td className="px-4 py-2.5 text-center text-gray-400">--</td>
-                          </tr>
-                        ))}
+                        {allTierGolfers.map((g, idx) => {
+                          const golferStatus = scoreMap.get(g.id)?.status;
+                          const isWD = golferStatus === 'withdrawn';
+                          return (
+                            <tr
+                              key={g.id}
+                              className={isWD ? 'bg-gray-50 border-b border-gray-100 text-gray-400' : idx % 2 === 0 ? 'bg-white border-b border-gray-100' : 'bg-gray-50 border-b border-gray-100'}
+                            >
+                              <td className="px-4 py-2.5 font-semibold text-gray-400">
+                                {isWD ? 'WD' : idx + 1}
+                              </td>
+                              <td className="px-4 py-2.5 font-medium">
+                                {isWD ? (
+                                  <span className="flex items-center gap-2">
+                                    <span className="line-through text-gray-400">{g.name}</span>
+                                    <span className="text-xs bg-red-100 text-red-600 px-1.5 py-0.5 rounded font-semibold">WD</span>
+                                  </span>
+                                ) : (
+                                  <span className="text-gray-900">{g.name}</span>
+                                )}
+                              </td>
+                              <td className="px-4 py-2.5 text-center text-gray-400">--</td>
+                              <td className="px-4 py-2.5 text-center text-gray-400">--</td>
+                              <td className="px-4 py-2.5 text-center text-gray-400">--</td>
+                              <td className="px-4 py-2.5 text-center text-gray-400">--</td>
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   </div>
