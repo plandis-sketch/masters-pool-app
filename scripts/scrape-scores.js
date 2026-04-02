@@ -360,12 +360,19 @@ async function scrapeAndUpdate() {
     }
   }
 
-  // Build position map: group competitors by score, assign tied position = min order in group
+  // Build position map: group competitors by score, assign tied position = min order in group.
+  // ESPN's c.order is sequential (1,2,3,4…) — we must group by score to find true tied positions.
+  // c.score may be a number, string, or object {value, displayValue}; normalize to a string key.
+  const getScoreKey = (score) => {
+    if (score === null || score === undefined) return 'unknown';
+    if (typeof score === 'object') return String(score.value ?? score.displayValue ?? 999);
+    return String(score);
+  };
   const scoreToMinOrder = new Map();
   for (const c of competitors) {
     const s = (c.status?.displayValue || '').toUpperCase();
     if (s === 'CUT' || s === 'MC' || s === 'WD' || s === 'DQ') continue;
-    const scoreKey = String(c.score);
+    const scoreKey = getScoreKey(c.score);
     const order = c.order ?? 999;
     if (!scoreToMinOrder.has(scoreKey) || order < scoreToMinOrder.get(scoreKey)) {
       scoreToMinOrder.set(scoreKey, order);
@@ -373,7 +380,7 @@ async function scrapeAndUpdate() {
   }
   const positionMap = new Map();
   for (const c of competitors) {
-    const scoreKey = String(c.score);
+    const scoreKey = getScoreKey(c.score);
     const tiedPos = scoreToMinOrder.get(scoreKey);
     if (tiedPos != null) {
       positionMap.set(c.id, { position: tiedPos });

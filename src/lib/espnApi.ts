@@ -172,6 +172,25 @@ export async function fetchLeaderboard(): Promise<EspnTournamentData | null> {
       return a.positionNum - b.positionNum;
     });
 
+    // Compute true tied positions: ESPN's `order` is sequential (1,2,3,4…) and ignores ties.
+    // Group active golfers by score-to-par and assign each group the lowest order in that group.
+    const scoreToMinPos = new Map<string, number>();
+    for (const g of golfers) {
+      if (g.status === 'active' && g.score !== '--') {
+        const existing = scoreToMinPos.get(g.score);
+        if (existing === undefined || g.positionNum < existing) {
+          scoreToMinPos.set(g.score, g.positionNum);
+        }
+      }
+    }
+    for (const g of golfers) {
+      if (g.status === 'active') {
+        const truePos = scoreToMinPos.get(g.score) ?? g.positionNum;
+        g.positionNum = truePos;
+        g.position = String(truePos);
+      }
+    }
+
     return {
       id: event.id,
       name: event.name || event.shortName || 'PGA Tournament',
