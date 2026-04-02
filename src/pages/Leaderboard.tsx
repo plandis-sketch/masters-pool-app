@@ -2,7 +2,7 @@ import { useState, useMemo } from 'react';
 import { useTournament, useTiers, useGolferScores, useEntries } from '../hooks/useTournament';
 import { useAuth } from '../hooks/useAuth';
 import { useEspnLeaderboard } from '../lib/espnApi';
-import { calculateGolferPoints } from '../constants/scoring';
+import { calculateGolferPoints, golferHasStarted } from '../constants/scoring';
 import TierBadge from '../components/common/TierBadge';
 
 type Tab = 'pool' | 'golfers';
@@ -32,7 +32,7 @@ export default function Leaderboard() {
     return null; // No cut yet — no cap on points during rounds 1-2
   }, [espnData, scores, tournament?.cutPlayerCount]);
 
-  // ESPN live position lookup by name (for active players only).
+  // ESPN live position and thru lookup by name (for active players only).
   // Used to keep Pool Standings in sync with the live Golfer Leaderboard tab.
   const espnByName = useMemo(() => {
     const map = new Map<string, number>();
@@ -45,23 +45,39 @@ export default function Leaderboard() {
     return map;
   }, [espnData]);
 
+  const espnThruByName = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!espnData) return map;
+    espnData.golfers.forEach((g) => {
+      if (g.status === 'active') {
+        map.set(g.name.toLowerCase().trim(), g.thru);
+      }
+    });
+    return map;
+  }, [espnData]);
+
   // Build maps from Firestore data, merging live ESPN positions for active players.
   // Firestore status is authoritative (cut/WD locks are permanent).
   // For active players, ESPN positionNum overrides Firestore position (eliminates 5-min lag).
+  // Golfers who have not yet teed off (thru is a tee time or '--') contribute 0 points.
   const scoreMap = useMemo(() => {
     const map = new Map<
       string,
-      { points: number; score: string; position: number | null; status: string }
+      { points: number; score: string; position: number | null; status: string; hasStarted: boolean }
     >();
     scores.forEach((s) => {
       const status = s.status as 'active' | 'cut' | 'withdrawn';
       const livePos = status === 'active' ? espnByName.get(s.name.toLowerCase().trim()) : undefined;
       const position = livePos ?? s.position;
-      const points = calculateGolferPoints(position, status, cutPlayerCount);
-      map.set(s.id, { points, score: s.score, position, status });
+      const liveThru = status === 'active' ? espnThruByName.get(s.name.toLowerCase().trim()) : undefined;
+      const thru = liveThru ?? s.thru;
+      // Cut/withdrawn always count; active golfers only count once on the course
+      const hasStarted = status !== 'active' || golferHasStarted(thru);
+      const points = hasStarted ? calculateGolferPoints(position, status, cutPlayerCount) : 0;
+      map.set(s.id, { points, score: s.score, position, status, hasStarted });
     });
     return map;
-  }, [scores, espnByName, cutPlayerCount]);
+  }, [scores, espnByName, espnThruByName, cutPlayerCount]);
 
   const golferNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -98,11 +114,13 @@ export default function Leaderboard() {
           name: golferNameMap.get(id) || 'Unknown',
           tier: golferTierMap.get(id) || 0,
           points: scoreMap.get(id)?.points ?? 0,
+          hasStarted: scoreMap.get(id)?.hasStarted ?? false,
           score: scoreMap.get(id)?.score ?? '--',
           position: scoreMap.get(id)?.position ?? null,
         }));
         const totalScore = golferDetails.reduce((sum, g) => sum + g.points, 0);
-        return { ...entry, golferDetails, totalScore };
+        const notStartedCount = golferDetails.filter((g) => !g.hasStarted).length;
+        return { ...entry, golferDetails, totalScore, notStartedCount };
       })
       .sort((a, b) => a.totalScore - b.totalScore);
   }, [visibleEntries, scoreMap, golferNameMap, golferTierMap]);
@@ -120,14 +138,18 @@ export default function Leaderboard() {
     return positions;
   }, [rankedEntries]);
 
-  // ESPN golfer data with pool points
+  // ESPN golfer data with pool points.
+  // Not-yet-started active golfers (thru is a tee time or '--') show null points → displayed as '--'.
   const espnGolfers = useMemo(() => {
     if (!espnData) return [];
     const effectiveCut = espnData.cutPlayerCount > 0 ? espnData.cutPlayerCount : cutPlayerCount;
-    return espnData.golfers.map((g) => ({
-      ...g,
-      poolPoints: calculateGolferPoints(g.positionNum, g.status, effectiveCut),
-    }));
+    return espnData.golfers.map((g) => {
+      const hasStarted = g.status !== 'active' || golferHasStarted(g.thru);
+      return {
+        ...g,
+        poolPoints: hasStarted ? calculateGolferPoints(g.positionNum, g.status, effectiveCut) : null,
+      };
+    });
   }, [espnData, cutPlayerCount]);
 
   if (!tournament) {
@@ -243,9 +265,16 @@ export default function Leaderboard() {
                         <span className="font-semibold text-gray-900">{entry.entryLabel}</span>
                       </div>
                     </div>
-                    <span className="text-xl font-bold text-masters-green">
-                      {entry.totalScore || '--'}
-                    </span>
+                    <div className="text-right">
+                      <span className="text-xl font-bold text-masters-green">
+                        {entry.totalScore || '--'}
+                      </span>
+                      {entry.notStartedCount > 0 && (
+                        <div className="text-xs text-gray-400">
+                          {6 - entry.notStartedCount}/6 started
+                        </div>
+                      )}
+                    </div>
                   </div>
                   <div className="px-4 py-2 grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2 text-xs">
                     {entry.golferDetails.map((g) => (
@@ -253,7 +282,7 @@ export default function Leaderboard() {
                         <TierBadge tierNumber={g.tier} size="sm" />
                         <span className="truncate min-w-0 flex-1">{g.name}</span>
                         <span className="font-semibold text-gray-900 shrink-0">
-                          {g.points || '--'}
+                          {g.hasStarted ? (g.points || '--') : '--'}
                         </span>
                       </div>
                     ))}
@@ -387,7 +416,7 @@ export default function Leaderboard() {
                         <td className="px-4 py-2.5 text-center">{g.today}</td>
                         <td className="px-4 py-2.5 text-center">{g.thru}</td>
                         <td className="px-4 py-2.5 text-center font-bold text-masters-green">
-                          {g.poolPoints}
+                          {g.poolPoints === null ? '--' : g.poolPoints}
                         </td>
                       </tr>
                     ))}

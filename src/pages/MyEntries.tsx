@@ -2,7 +2,7 @@ import { useMemo } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useTournament, useTiers, useGolferScores, useEntries, useWithdrawalAlerts } from '../hooks/useTournament';
 import { useEspnLeaderboard } from '../lib/espnApi';
-import { calculateGolferPoints } from '../constants/scoring';
+import { calculateGolferPoints, golferHasStarted } from '../constants/scoring';
 import TierBadge from '../components/common/TierBadge';
 import { useNavigate } from 'react-router-dom';
 
@@ -38,7 +38,7 @@ export default function MyEntries() {
     return null; // No cut yet — no cap on points during rounds 1-2
   }, [espnData, scores, tournament?.cutPlayerCount]);
 
-  // ESPN live position lookup by name (for active players only).
+  // ESPN live position and thru lookup by name (for active players only).
   const espnByName = useMemo(() => {
     const map = new Map<string, number>();
     if (!espnData) return map;
@@ -50,17 +50,31 @@ export default function MyEntries() {
     return map;
   }, [espnData]);
 
+  const espnThruByName = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!espnData) return map;
+    espnData.golfers.forEach((g) => {
+      if (g.status === 'active') {
+        map.set(g.name.toLowerCase().trim(), g.thru);
+      }
+    });
+    return map;
+  }, [espnData]);
+
   const scoreMap = useMemo(() => {
-    const map = new Map<string, { points: number; score: string; position: number | null; status: string }>();
+    const map = new Map<string, { points: number; score: string; position: number | null; status: string; hasStarted: boolean }>();
     scores.forEach((s) => {
       const status = s.status as 'active' | 'cut' | 'withdrawn';
       const livePos = status === 'active' ? espnByName.get(s.name.toLowerCase().trim()) : undefined;
       const position = livePos ?? s.position;
-      const points = calculateGolferPoints(position, status, cutPlayerCount);
-      map.set(s.id, { points, score: s.score, position, status });
+      const liveThru = status === 'active' ? espnThruByName.get(s.name.toLowerCase().trim()) : undefined;
+      const thru = liveThru ?? s.thru;
+      const hasStarted = status !== 'active' || golferHasStarted(thru);
+      const points = hasStarted ? calculateGolferPoints(position, status, cutPlayerCount) : 0;
+      map.set(s.id, { points, score: s.score, position, status, hasStarted });
     });
     return map;
-  }, [scores, espnByName, cutPlayerCount]);
+  }, [scores, espnByName, espnThruByName, cutPlayerCount]);
 
   const golferNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -91,11 +105,13 @@ export default function MyEntries() {
           name: golferNameMap.get(id) || 'Unknown',
           tier: golferTierMap.get(id) || 0,
           points: scoreMap.get(id)?.points ?? 0,
+          hasStarted: scoreMap.get(id)?.hasStarted ?? false,
           score: scoreMap.get(id)?.score ?? '--',
           status: scoreMap.get(id)?.status ?? 'active',
         }));
         const totalScore = golferDetails.reduce((sum, g) => sum + g.points, 0);
-        return { ...entry, golferDetails, totalScore };
+        const notStartedCount = golferDetails.filter((g) => !g.hasStarted).length;
+        return { ...entry, golferDetails, totalScore, notStartedCount };
       })
       .sort((a, b) => a.entryNumber - b.entryNumber);
   }, [entries, user, scoreMap, golferNameMap, golferTierMap]);
@@ -293,9 +309,16 @@ export default function MyEntries() {
                       Edit Picks
                     </button>
                   )}
-                  <span className="text-xl font-bold text-masters-green">
-                    {entry.totalScore || '--'}
-                  </span>
+                  <div className="text-right">
+                    <span className="text-xl font-bold text-masters-green">
+                      {entry.totalScore || '--'}
+                    </span>
+                    {entry.notStartedCount > 0 && (
+                      <div className="text-xs text-gray-400">
+                        {6 - entry.notStartedCount}/6 started
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
               <div className="px-4 py-3 space-y-2">
@@ -315,7 +338,7 @@ export default function MyEntries() {
                     <div className="flex items-center gap-3 shrink-0">
                       <span className="text-gray-400 text-xs">{g.score}</span>
                       <span className="font-semibold text-gray-900 w-8 text-right">
-                        {g.points || '--'}
+                        {g.hasStarted ? (g.points || '--') : '--'}
                       </span>
                     </div>
                   </div>

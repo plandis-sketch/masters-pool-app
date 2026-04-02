@@ -42,3 +42,14 @@ export function calculateGolferPoints(
 export function calculateEntryTotal(golferPoints: number[]): number {
   return golferPoints.reduce((sum, pts) => sum + pts, 0);
 }
+
+/**
+ * Returns true if a golfer has started their round.
+ * thru must be a positive integer string ("1"–"18") or "F" (finished).
+ * A tee time string or "--" means they haven't started.
+ */
+export function golferHasStarted(thru: string | undefined | null): boolean {
+  if (!thru) return false;
+  if (thru === 'F') return true;
+  return /^\d+$/.test(thru);
+}

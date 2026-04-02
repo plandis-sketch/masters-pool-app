@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useTournament, useTiers, useGolferScores, updateGolferScore } from '../../hooks/useTournament';
-import { calculateGolferPoints, getMissedCutScore } from '../../constants/scoring';
+import { calculateGolferPoints, getMissedCutScore, golferHasStarted } from '../../constants/scoring';
 import { Timestamp } from 'firebase/firestore';
 import { Link, useNavigate } from 'react-router-dom';
 import TierBadge from '../../components/common/TierBadge';
@@ -194,7 +194,9 @@ export default function ScoreManagement() {
                     </td>
                     <td className="px-3 py-2 text-center font-bold text-masters-green">
                       {existing
-                        ? calculateGolferPoints(existing.position, existing.status, tournament?.cutPlayerCount ?? null)
+                        ? (existing.status !== 'active' || golferHasStarted(existing.thru))
+                          ? calculateGolferPoints(existing.position, existing.status, tournament?.cutPlayerCount ?? null)
+                          : '--'
                         : '--'}
                     </td>
                     <td className="px-3 py-2">
