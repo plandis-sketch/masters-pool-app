@@ -21,29 +21,47 @@ export default function Leaderboard() {
   const picksRevealed =
     tournament?.picksLocked || (firstTeeTime ? firstTeeTime.getTime() <= Date.now() : false);
 
-  // cutPlayerCount priority: Firestore (locked by scraper) → ESPN live → count active → default.
-  // Once the scraper locks cutPlayerCount in Firestore, that value is authoritative.
-  const cutPlayerCount = useMemo(() => {
+  // cutPlayerCount: null when no cut has happened yet (rounds 1-2 — no cap on points).
+  // Priority: Firestore (locked by scraper) → ESPN live (R3+) → active+cut detected → null.
+  const cutPlayerCount = useMemo((): number | null => {
     if (tournament?.cutPlayerCount && tournament.cutPlayerCount > 0) return tournament.cutPlayerCount;
     if (espnData && espnData.cutPlayerCount > 0) return espnData.cutPlayerCount;
     const activeInFirestore = scores.filter((s) => s.status === 'active').length;
     if (activeInFirestore > 0 && scores.some((s) => s.status === 'cut'))
       return activeInFirestore;
-    return 50;
+    return null; // No cut yet — no cap on points during rounds 1-2
   }, [espnData, scores, tournament?.cutPlayerCount]);
 
-  // Build maps from Firestore data (for pool scoring)
+  // ESPN live position lookup by name (for active players only).
+  // Used to keep Pool Standings in sync with the live Golfer Leaderboard tab.
+  const espnByName = useMemo(() => {
+    const map = new Map<string, number>();
+    if (!espnData) return map;
+    espnData.golfers.forEach((g) => {
+      if (g.status === 'active') {
+        map.set(g.name.toLowerCase().trim(), g.positionNum);
+      }
+    });
+    return map;
+  }, [espnData]);
+
+  // Build maps from Firestore data, merging live ESPN positions for active players.
+  // Firestore status is authoritative (cut/WD locks are permanent).
+  // For active players, ESPN positionNum overrides Firestore position (eliminates 5-min lag).
   const scoreMap = useMemo(() => {
     const map = new Map<
       string,
       { points: number; score: string; position: number | null; status: string }
     >();
     scores.forEach((s) => {
-      const points = calculateGolferPoints(s.position, s.status, cutPlayerCount);
-      map.set(s.id, { points, score: s.score, position: s.position, status: s.status });
+      const status = s.status as 'active' | 'cut' | 'withdrawn';
+      const livePos = status === 'active' ? espnByName.get(s.name.toLowerCase().trim()) : undefined;
+      const position = livePos ?? s.position;
+      const points = calculateGolferPoints(position, status, cutPlayerCount);
+      map.set(s.id, { points, score: s.score, position, status });
     });
     return map;
-  }, [scores, cutPlayerCount]);
+  }, [scores, espnByName, cutPlayerCount]);
 
   const golferNameMap = useMemo(() => {
     const map = new Map<string, string>();
