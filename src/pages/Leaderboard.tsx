@@ -59,7 +59,9 @@ export default function Leaderboard() {
   // Build maps from Firestore data, merging live ESPN positions for active players.
   // Firestore status is authoritative (cut/WD locks are permanent).
   // For active players, ESPN positionNum overrides Firestore position (eliminates 5-min lag).
-  // Golfers who have not yet teed off (thru is a tee time or '--') contribute 0 points.
+  // "Not started" (no points / '--') only applies in Round 1 before a golfer's first tee time.
+  // On Round 2+, all active golfers have a valid tournament position and always receive points.
+  const isRound1 = !espnData || espnData.round <= 1;
   const scoreMap = useMemo(() => {
     const map = new Map<
       string,
@@ -71,13 +73,14 @@ export default function Leaderboard() {
       const position = livePos ?? s.position;
       const liveThru = status === 'active' ? espnThruByName.get(s.name.toLowerCase().trim()) : undefined;
       const thru = liveThru ?? s.thru;
-      // Cut/withdrawn always count; active golfers only count once on the course
-      const hasStarted = status !== 'active' || golferHasStarted(thru);
+      // Cut/withdrawn always count. Active golfers only show '--' on Round 1 before teeing off.
+      // On Round 2+, all active golfers have a valid position and always receive points.
+      const hasStarted = status !== 'active' || !isRound1 || golferHasStarted(thru);
       const points = hasStarted ? calculateGolferPoints(position, status, cutPlayerCount) : 0;
       map.set(s.id, { points, score: s.score, position, status, hasStarted });
     });
     return map;
-  }, [scores, espnByName, espnThruByName, cutPlayerCount]);
+  }, [scores, espnByName, espnThruByName, cutPlayerCount, isRound1]);
 
   const golferNameMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -139,12 +142,14 @@ export default function Leaderboard() {
   }, [rankedEntries]);
 
   // ESPN golfer data with pool points.
-  // Not-yet-started active golfers (thru is a tee time or '--') show null points → displayed as '--'.
+  // Only show null/-- for active golfers on Round 1 who haven't teed off yet.
+  // On Round 2+, all active golfers have a valid position and always receive points.
   const espnGolfers = useMemo(() => {
     if (!espnData) return [];
     const effectiveCut = espnData.cutPlayerCount > 0 ? espnData.cutPlayerCount : cutPlayerCount;
+    const espnIsRound1 = espnData.round <= 1;
     return espnData.golfers.map((g) => {
-      const hasStarted = g.status !== 'active' || golferHasStarted(g.thru);
+      const hasStarted = g.status !== 'active' || !espnIsRound1 || golferHasStarted(g.thru);
       return {
         ...g,
         poolPoints: hasStarted ? calculateGolferPoints(g.positionNum, g.status, effectiveCut) : null,
