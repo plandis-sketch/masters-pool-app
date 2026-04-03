@@ -252,6 +252,49 @@ async function scrapeAndUpdate() {
   }
   logger.info(`Current round: ${espnRound}`);
 
+  // --- Round-transition snapshot (pre-update) ---
+  // When the round advances, capture the snapshot for the just-completed round
+  // NOW — using existing Firestore scores — before this run overwrites them
+  // with the new round's data. This is the only reliable time to take an accurate
+  // end-of-round snapshot.
+  const prevRound = tournament.currentRound;
+  if (prevRound >= 1 && prevRound <= 3 && espnRound > prevRound) {
+    const transRef = db.collection("tournaments").doc(tournament.id)
+      .collection("dailyLeaderboards").doc("round" + prevRound);
+    const transExisting = await transRef.get();
+    if (!transExisting.exists) {
+      const transStandings = allEntries.map((entry) => {
+        const pickIds = [entry.picks?.tier1, entry.picks?.tier2, entry.picks?.tier3,
+                         entry.picks?.tier4, entry.picks?.tier5, entry.picks?.tier6];
+        const golfers = pickIds.map((id) => {
+          const score = existingScores.get(id);
+          return {
+            id,
+            name: score?.name || allGolfers.find((g) => g.id === id)?.name || "Unknown",
+            points: score?.points ?? 0,
+            score: score?.score || "--",
+            status: score?.status || "active",
+          };
+        });
+        const totalScore = golfers.reduce((sum, g) => sum + g.points, 0);
+        return {
+          entryId: entry.id,
+          participantName: entry.participantName || "",
+          entryLabel: entry.entryLabel || entry.participantName || "",
+          totalScore,
+          golfers,
+        };
+      });
+      transStandings.sort((a, b) => a.totalScore - b.totalScore);
+      await transRef.set({
+        round: prevRound,
+        standings: transStandings.slice(0, 10),
+        snapshotAt: Timestamp.now(),
+      });
+      logger.info(`Saved Daily Leaderboard snapshot for Round ${prevRound} (round transition, pre-update)`);
+    }
+  }
+
   // Count active competitors from ESPN for initial cut detection.
   // Use both status flag AND linescore count — ESPN doesn't always flag cut players.
   const activeCompetitors = competitors.filter((c) => {
