@@ -31,3 +31,4 @@ dist-ssr
 
 # Claude Code memory
 memory/
+.env.save
