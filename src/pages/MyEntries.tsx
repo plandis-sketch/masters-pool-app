@@ -69,7 +69,7 @@ export default function MyEntries() {
       const position = livePos ?? s.position;
       const liveThru = status === 'active' ? espnThruByName.get(s.name.toLowerCase().trim()) : undefined;
       const thru = liveThru ?? s.thru;
-      const hasStarted = status !== 'active' || golferHasStarted(thru);
+      const hasStarted = status !== 'active' || position !== null || golferHasStarted(thru);
       const points = hasStarted ? calculateGolferPoints(position, status, cutPlayerCount) : 0;
       map.set(s.id, { points, score: s.score, position, status, hasStarted });
     });
