@@ -16,6 +16,7 @@ import ScoreManagement from './pages/admin/ScoreManagement';
 import PaymentTracking from './pages/admin/PaymentTracking';
 import PickOverrides from './pages/admin/PickOverrides';
 import ParticipantList from './pages/admin/ParticipantList';
+import MessageBoard from './pages/MessageBoard';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -70,6 +71,7 @@ function AppRoutes() {
         <Route path="/daily" element={<DailyLeaderboard />} />
         <Route path="/draft" element={<Draft />} />
         <Route path="/my-entries" element={<MyEntries />} />
+        <Route path="/message-board" element={<MessageBoard />} />
         <Route path="/settings" element={<Settings />} />
         <Route path="/profile" element={<Profile />} />
         <Route path="/admin" element={<AdminLogin />} />

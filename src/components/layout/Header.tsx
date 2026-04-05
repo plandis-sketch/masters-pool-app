@@ -31,6 +31,9 @@ export default function Header() {
               <Link to="/my-entries" className={`px-2 py-1 rounded transition ${isActive('/my-entries')}`}>
                 My Entries
               </Link>
+              <Link to="/message-board" className={`px-2 py-1 rounded transition ${isActive('/message-board')}`}>
+                Board
+              </Link>
               <Link to="/settings" className={`px-2 py-1 rounded transition ${isActive('/settings')}`}>
                 Info
               </Link>

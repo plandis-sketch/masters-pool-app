@@ -108,6 +108,15 @@ export interface DailyStanding {
   snapshotAt: Timestamp;
 }
 
+export interface Message {
+  id: string;
+  authorId: string;
+  authorName: string;
+  content: string;
+  createdAt: Timestamp;
+  isAnnouncement: boolean;
+}
+
 export interface WithdrawalAlert {
   id: string;
   golferId: string;
