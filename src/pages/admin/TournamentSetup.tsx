@@ -131,6 +131,7 @@ export default function TournamentSetup() {
           <Link to="/admin/scores" className="px-3 py-1.5 bg-gray-100 rounded-lg hover:bg-gray-200 text-gray-600">Scores</Link>
           <Link to="/admin/payments" className="px-3 py-1.5 bg-gray-100 rounded-lg hover:bg-gray-200 text-gray-600">Payments</Link>
           <Link to="/admin/picks" className="px-3 py-1.5 bg-gray-100 rounded-lg hover:bg-gray-200 text-gray-600">Pick Overrides</Link>
+          <Link to="/admin/participants" className="px-3 py-1.5 bg-gray-100 rounded-lg hover:bg-gray-200 text-gray-600">Participants</Link>
         </nav>
       </div>
 

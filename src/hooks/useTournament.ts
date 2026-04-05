@@ -10,7 +10,7 @@ import {
   addDoc,
 } from 'firebase/firestore';
 import { db } from '../lib/firebase';
-import type { Tournament, Tier, GolferScore, Entry, DailyStanding, WithdrawalAlert } from '../lib/types';
+import type { Tournament, Tier, GolferScore, Entry, DailyStanding, WithdrawalAlert, User } from '../lib/types';
 
 // Get the active tournament (most recent one)
 export function useTournament() {
@@ -190,4 +190,27 @@ export async function submitEntry(tournamentId: string, entry: Omit<Entry, 'id'>
 // Admin: Update entry (pick overrides, payment)
 export async function updateEntry(tournamentId: string, entryId: string, data: Partial<Entry>) {
   await updateDoc(doc(db, 'tournaments', tournamentId, 'entries', entryId), data);
+}
+
+// Admin: Get all users
+export function useUsers() {
+  const [users, setUsers] = useState<User[]>([]);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    const unsub = onSnapshot(
+      collection(db, 'users'),
+      (snap) => {
+        setUsers(snap.docs.map((d) => ({ uid: d.id, ...d.data() } as User)));
+        setLoading(false);
+      },
+      (err) => {
+        console.error('[useUsers] snapshot error:', err);
+        setLoading(false);
+      }
+    );
+    return unsub;
+  }, []);
+
+  return { users, loading };
 }

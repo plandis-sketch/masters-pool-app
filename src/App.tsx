@@ -15,6 +15,7 @@ import TournamentSetup from './pages/admin/TournamentSetup';
 import ScoreManagement from './pages/admin/ScoreManagement';
 import PaymentTracking from './pages/admin/PaymentTracking';
 import PickOverrides from './pages/admin/PickOverrides';
+import ParticipantList from './pages/admin/ParticipantList';
 
 function RequireAuth({ children }: { children: React.ReactNode }) {
   const { user, loading } = useAuth();
@@ -76,6 +77,7 @@ function AppRoutes() {
         <Route path="/admin/scores" element={<RequireAdmin><ScoreManagement /></RequireAdmin>} />
         <Route path="/admin/payments" element={<RequireAdmin><PaymentTracking /></RequireAdmin>} />
         <Route path="/admin/picks" element={<RequireAdmin><PickOverrides /></RequireAdmin>} />
+        <Route path="/admin/participants" element={<RequireAdmin><ParticipantList /></RequireAdmin>} />
       </Route>
 
       {/* Catch all */}
