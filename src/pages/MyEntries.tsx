@@ -28,10 +28,11 @@ export default function MyEntries() {
   const isLocked = tournament?.picksLocked || teeTimePassed;
 
   // cutPlayerCount: null when no cut has happened yet (rounds 1-2 — no cap on points).
-  // Priority: Firestore (locked by scraper) → ESPN live (R3+) → active+cut detected → null.
+  // Priority: ESPN live (authoritative count of who made cut) → Firestore → detect from scores → null.
+  // ESPN is checked first because the scraper may have locked a slightly wrong count in Firestore.
   const cutPlayerCount = useMemo((): number | null => {
-    if (tournament?.cutPlayerCount && tournament.cutPlayerCount > 0) return tournament.cutPlayerCount;
     if (espnData && espnData.cutPlayerCount > 0) return espnData.cutPlayerCount;
+    if (tournament?.cutPlayerCount && tournament.cutPlayerCount > 0) return tournament.cutPlayerCount;
     const activeInFirestore = scores.filter((s) => s.status === 'active').length;
     if (activeInFirestore > 0 && scores.some((s) => s.status === 'cut'))
       return activeInFirestore;

@@ -22,10 +22,12 @@ export default function Leaderboard() {
     tournament?.picksLocked || (firstTeeTime ? firstTeeTime.getTime() <= Date.now() : false);
 
   // cutPlayerCount: null when no cut has happened yet (rounds 1-2 — no cap on points).
-  // Priority: Firestore (locked by scraper) → ESPN live (R3+) → active+cut detected → null.
+  // Priority: ESPN live (authoritative count of who made cut) → Firestore → detect from scores → null.
+  // ESPN is checked first because the scraper may have locked a slightly wrong count in Firestore
+  // (it counted active competitors at lock time; ESPN's cutPlayerCount reflects the finalized number).
   const cutPlayerCount = useMemo((): number | null => {
-    if (tournament?.cutPlayerCount && tournament.cutPlayerCount > 0) return tournament.cutPlayerCount;
     if (espnData && espnData.cutPlayerCount > 0) return espnData.cutPlayerCount;
+    if (tournament?.cutPlayerCount && tournament.cutPlayerCount > 0) return tournament.cutPlayerCount;
     const activeInFirestore = scores.filter((s) => s.status === 'active').length;
     if (activeInFirestore > 0 && scores.some((s) => s.status === 'cut'))
       return activeInFirestore;
@@ -144,15 +146,15 @@ export default function Leaderboard() {
   // ESPN golfer data with pool points.
   // Only show null/-- for active golfers on Round 1 who haven't teed off yet.
   // On Round 2+, all active golfers have a valid position and always receive points.
+  // Uses the same cutPlayerCount as Pool Standings — single source of truth.
   const espnGolfers = useMemo(() => {
     if (!espnData) return [];
-    const effectiveCut = espnData.cutPlayerCount > 0 ? espnData.cutPlayerCount : cutPlayerCount;
     const espnIsRound1 = espnData.round <= 1;
     return espnData.golfers.map((g) => {
       const hasStarted = g.status !== 'active' || !espnIsRound1 || golferHasStarted(g.thru);
       return {
         ...g,
-        poolPoints: hasStarted ? calculateGolferPoints(g.positionNum, g.status, effectiveCut) : null,
+        poolPoints: hasStarted ? calculateGolferPoints(g.positionNum, g.status, cutPlayerCount) : null,
       };
     });
   }, [espnData, cutPlayerCount]);

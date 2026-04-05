@@ -1,6 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useTournament, useTiers, useGolferScores, updateGolferScore } from '../../hooks/useTournament';
+import { useEspnLeaderboard } from '../../lib/espnApi';
 import { calculateGolferPoints, getMissedCutScore, golferHasStarted } from '../../constants/scoring';
 import { Timestamp } from 'firebase/firestore';
 import { Link, useNavigate } from 'react-router-dom';
@@ -11,7 +12,15 @@ export default function ScoreManagement() {
   const { tournament } = useTournament();
   const { tiers } = useTiers(tournament?.id);
   const { scores } = useGolferScores(tournament?.id);
+  const { data: espnData } = useEspnLeaderboard();
   const navigate = useNavigate();
+
+  // Same priority as all other views: ESPN first (authoritative), then Firestore.
+  const cutPlayerCount = useMemo((): number | null => {
+    if (espnData && espnData.cutPlayerCount > 0) return espnData.cutPlayerCount;
+    if (tournament?.cutPlayerCount && tournament.cutPlayerCount > 0) return tournament.cutPlayerCount;
+    return null;
+  }, [espnData, tournament?.cutPlayerCount]);
   const [saving, setSaving] = useState<string | null>(null);
   const [message, setMessage] = useState('');
 
@@ -47,7 +56,7 @@ export default function ScoreManagement() {
 
     const position = edit.position !== undefined ? (edit.position ? parseInt(edit.position) : null) : existing?.position ?? null;
     const status = (edit.status || existing?.status || 'active') as 'active' | 'cut' | 'withdrawn';
-    const points = calculateGolferPoints(position, status, tournament.cutPlayerCount);
+    const points = calculateGolferPoints(position, status, cutPlayerCount);
 
     try {
       await updateGolferScore(tournament.id, golferId, {
@@ -101,9 +110,9 @@ export default function ScoreManagement() {
         </nav>
       </div>
 
-      {tournament?.cutPlayerCount ? (
+      {cutPlayerCount ? (
         <div className="mb-4 p-3 rounded-lg text-sm font-medium bg-blue-50 text-blue-700">
-          Cut locked: {tournament.cutPlayerCount} made the cut · Missed cut score = {getMissedCutScore(tournament.cutPlayerCount)}
+          Cut locked: {cutPlayerCount} made the cut · Missed cut score = {getMissedCutScore(cutPlayerCount)}
         </div>
       ) : null}
 
@@ -195,7 +204,7 @@ export default function ScoreManagement() {
                     <td className="px-3 py-2 text-center font-bold text-masters-green">
                       {existing
                         ? (existing.status !== 'active' || golferHasStarted(existing.thru))
-                          ? calculateGolferPoints(existing.position, existing.status, tournament?.cutPlayerCount ?? null)
+                          ? calculateGolferPoints(existing.position, existing.status, cutPlayerCount)
                           : '--'
                         : '--'}
                     </td>
