@@ -88,34 +88,6 @@ export default function MyEntries() {
     return map;
   }, [tiers]);
 
-  const myEntries = useMemo(() => {
-    return entries
-      .filter((e) => e.userId === user?.uid)
-      .map((entry) => {
-        const pickIds = [
-          entry.picks.tier1,
-          entry.picks.tier2,
-          entry.picks.tier3,
-          entry.picks.tier4,
-          entry.picks.tier5,
-          entry.picks.tier6,
-        ];
-        const golferDetails = pickIds.map((id) => ({
-          id,
-          name: golferNameMap.get(id) || 'Unknown',
-          tier: golferTierMap.get(id) || 0,
-          points: scoreMap.get(id)?.points ?? 0,
-          hasStarted: scoreMap.get(id)?.hasStarted ?? false,
-          score: scoreMap.get(id)?.score ?? '--',
-          status: scoreMap.get(id)?.status ?? 'active',
-        }));
-        const totalScore = golferDetails.reduce((sum, g) => sum + g.points, 0);
-        const notStartedCount = golferDetails.filter((g) => !g.hasStarted).length;
-        return { ...entry, golferDetails, totalScore, notStartedCount };
-      })
-      .sort((a, b) => a.entryNumber - b.entryNumber);
-  }, [entries, user, scoreMap, golferNameMap, golferTierMap]);
-
   // Pool position map: tie-aware positions across ALL entries (matches Pool Standings ranking)
   const poolPositionMap = useMemo(() => {
     const map = new Map<string, number>();
@@ -143,6 +115,41 @@ export default function MyEntries() {
     });
     return map;
   }, [entries, scoreMap, isLocked]);
+
+  const myEntries = useMemo(() => {
+    return entries
+      .filter((e) => e.userId === user?.uid)
+      .map((entry) => {
+        const pickIds = [
+          entry.picks.tier1,
+          entry.picks.tier2,
+          entry.picks.tier3,
+          entry.picks.tier4,
+          entry.picks.tier5,
+          entry.picks.tier6,
+        ];
+        const golferDetails = pickIds.map((id) => ({
+          id,
+          name: golferNameMap.get(id) || 'Unknown',
+          tier: golferTierMap.get(id) || 0,
+          points: scoreMap.get(id)?.points ?? 0,
+          hasStarted: scoreMap.get(id)?.hasStarted ?? false,
+          score: scoreMap.get(id)?.score ?? '--',
+          status: scoreMap.get(id)?.status ?? 'active',
+        }));
+        const totalScore = golferDetails.reduce((sum, g) => sum + g.points, 0);
+        const notStartedCount = golferDetails.filter((g) => !g.hasStarted).length;
+        return { ...entry, golferDetails, totalScore, notStartedCount };
+      })
+      .sort((a, b) => {
+        if (isLocked) {
+          const posA = poolPositionMap.get(a.id) ?? Infinity;
+          const posB = poolPositionMap.get(b.id) ?? Infinity;
+          if (posA !== posB) return posA - posB;
+        }
+        return a.entryNumber - b.entryNumber;
+      });
+  }, [entries, user, scoreMap, golferNameMap, golferTierMap, isLocked, poolPositionMap]);
 
   // Active WD alerts per entry — only shown when the entry still has the withdrawn golfer picked
   // and the swap deadline hasn't passed.
