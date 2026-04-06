@@ -50,8 +50,8 @@ const TOURNAMENT = {
     start: Timestamp.fromDate(new Date('2026-04-09T08:00:00-04:00')),
     end:   Timestamp.fromDate(new Date('2026-04-12T19:00:00-04:00')),
   },
-  // First competitive tee time Thursday April 9 ~8:00 AM EDT
-  firstTeeTime: Timestamp.fromDate(new Date('2026-04-09T08:00:00-04:00')),
+  // Picks lock at 7:30 AM ET Thursday April 9 — earlier than first tee time
+  firstTeeTime: Timestamp.fromDate(new Date('2026-04-09T07:30:00-04:00')),
   cutLine: null,
   cutPlayerCount: null,      // Top 50 + ties — set dynamically by scraper
   picksLocked: false,
