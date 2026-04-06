@@ -102,6 +102,12 @@ export default function ParticipantList() {
         </nav>
       </div>
 
+      {/* Total entries stat */}
+      <div className="bg-masters-green text-white rounded-xl px-5 py-4 mb-5 flex items-center justify-between">
+        <span className="text-sm font-medium opacity-80">Total Entries Submitted</span>
+        <span className="text-3xl font-bold">{entries.length}</span>
+      </div>
+
       {/* Summary + controls */}
       <div className="flex flex-col sm:flex-row gap-3 mb-4 items-start sm:items-center justify-between">
         <div className="text-sm text-gray-500">
