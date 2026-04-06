@@ -308,8 +308,9 @@ export default function Leaderboard() {
               <p className="text-gray-400 mt-3">Loading tournament leaderboard...</p>
             </div>
           ) : !espnData || espnData.golfers.length === 0 ? (
-            /* Pre-tournament: show full pool roster from tiers with blank scoring */
+            /* Pre-tournament: show full pool roster from tiers + full-field extras with blank scoring */
             (() => {
+              const tierGolferIds = new Set(tiers.flatMap((t) => t.golfers.map((g) => g.id)));
               const allTierGolfers = tiers
                 .flatMap((t) => t.golfers.map((g) => ({ ...g, tierNumber: t.tierNumber })))
                 .sort((a, b) => {
@@ -317,11 +318,13 @@ export default function Leaderboard() {
                   const bWD = scoreMap.get(b.id)?.status === 'withdrawn' ? 1 : 0;
                   return aWD - bWD;
                 });
-              if (allTierGolfers.length === 0) return null;
+              const nonTierGolfers = scores.filter((s) => !tierGolferIds.has(s.id));
+              if (allTierGolfers.length === 0 && nonTierGolfers.length === 0) return null;
+              const totalField = allTierGolfers.length + nonTierGolfers.length;
               return (
                 <>
                   <div className="px-4 py-2 bg-gray-50 border-b text-xs text-gray-500 flex justify-between items-center">
-                    <span>{tournament.name} &mdash; {allTierGolfers.length} golfers (pool field)</span>
+                    <span>{tournament.name} &mdash; {totalField} golfers ({allTierGolfers.length} in pool)</span>
                     <span className="text-gray-400">Tee times TBA &mdash; scores will appear once Round 1 begins</span>
                   </div>
                   <div className="overflow-x-auto">
@@ -365,6 +368,28 @@ export default function Leaderboard() {
                             </tr>
                           );
                         })}
+                        {nonTierGolfers.length > 0 && (
+                          <>
+                            <tr className="bg-gray-100 border-b border-gray-200">
+                              <td colSpan={6} className="px-4 py-2 text-xs font-semibold text-gray-500 uppercase tracking-wide">
+                                Additional Field — not in pool tiers
+                              </td>
+                            </tr>
+                            {nonTierGolfers.map((g, idx) => (
+                              <tr
+                                key={g.id}
+                                className={idx % 2 === 0 ? 'bg-white border-b border-gray-100' : 'bg-gray-50 border-b border-gray-100'}
+                              >
+                                <td className="px-4 py-2.5 font-semibold text-gray-300">—</td>
+                                <td className="px-4 py-2.5 font-medium text-gray-500">{g.name}</td>
+                                <td className="px-4 py-2.5 text-center text-gray-400">--</td>
+                                <td className="px-4 py-2.5 text-center text-gray-400">--</td>
+                                <td className="px-4 py-2.5 text-center text-gray-400">--</td>
+                                <td className="px-4 py-2.5 text-center text-gray-300">—</td>
+                              </tr>
+                            ))}
+                          </>
+                        )}
                       </tbody>
                     </table>
                   </div>
