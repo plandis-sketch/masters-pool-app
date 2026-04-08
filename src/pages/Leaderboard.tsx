@@ -144,6 +144,19 @@ export default function Leaderboard() {
     return positions;
   }, [rankedEntries]);
 
+  // Tee time lookup by golfer name (case-insensitive) from the hardcoded Round 1 schedule.
+  // Used as fallback when ESPN doesn't embed tee times in its pre-tournament scoreboard
+  // (e.g. the Masters returns bare linescores with no displayValue/statistics).
+  const teeTimeByName = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const group of ROUND1_TEE_TIMES) {
+      for (const name of group.names) {
+        map.set(name.toLowerCase().trim(), group.time);
+      }
+    }
+    return map;
+  }, []);
+
   // ESPN golfer data with pool points.
   // Only show null/-- for active golfers on Round 1 who haven't teed off yet.
   // On Round 2+, all active golfers have a valid position and always receive points.
@@ -152,13 +165,20 @@ export default function Leaderboard() {
     if (!espnData) return [];
     const espnIsRound1 = espnData.round <= 1;
     return espnData.golfers.map((g) => {
-      const hasStarted = g.status !== 'active' || !espnIsRound1 || golferHasStarted(g.thru);
+      // If ESPN didn't provide a tee time (thru === '--') for a pre-play Round 1 active
+      // golfer, fall back to the hardcoded schedule (handles Masters and similar events).
+      const thru =
+        espnIsRound1 && g.thru === '--' && g.status === 'active'
+          ? (teeTimeByName.get(g.name.toLowerCase().trim()) ?? '--')
+          : g.thru;
+      const hasStarted = g.status !== 'active' || !espnIsRound1 || golferHasStarted(thru);
       return {
         ...g,
+        thru,
         poolPoints: hasStarted ? calculateGolferPoints(g.positionNum, g.status, cutPlayerCount) : null,
       };
     });
-  }, [espnData, cutPlayerCount]);
+  }, [espnData, cutPlayerCount, teeTimeByName]);
 
   // True when we're in Round 1 and no active golfer has teed off yet.
   // Used to switch the Golfer Leaderboard from position-based to tee-time-based order.
