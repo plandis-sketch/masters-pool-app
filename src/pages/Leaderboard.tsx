@@ -3,6 +3,7 @@ import { useTournament, useTiers, useGolferScores, useEntries } from '../hooks/u
 import { useAuth } from '../hooks/useAuth';
 import { useEspnLeaderboard } from '../lib/espnApi';
 import { calculateGolferPoints, golferHasStarted } from '../constants/scoring';
+import { ROUND1_TEE_TIMES, parseTeeTimeMinutes } from '../constants/teeTimes';
 import TierBadge from '../components/common/TierBadge';
 
 type Tab = 'pool' | 'golfers';
@@ -159,6 +160,24 @@ export default function Leaderboard() {
     });
   }, [espnData, cutPlayerCount]);
 
+  // True when we're in Round 1 and no active golfer has teed off yet.
+  // Used to switch the Golfer Leaderboard from position-based to tee-time-based order.
+  const isPrePlay = useMemo(() => {
+    if (!espnData || espnData.round > 1) return false;
+    return espnData.golfers.every((g) => g.status !== 'active' || !golferHasStarted(g.thru));
+  }, [espnData]);
+
+  // When pre-play, sort by tee time; otherwise use ESPN's position order.
+  const displayGolfers = useMemo(() => {
+    if (!isPrePlay) return espnGolfers;
+    return [...espnGolfers].sort((a, b) => {
+      const aWD = a.status === 'withdrawn' ? 1 : 0;
+      const bWD = b.status === 'withdrawn' ? 1 : 0;
+      if (aWD !== bWD) return aWD - bWD;
+      return parseTeeTimeMinutes(a.thru) - parseTeeTimeMinutes(b.thru);
+    });
+  }, [espnGolfers, isPrePlay]);
+
   if (!tournament) {
     return (
       <div className="text-center py-12">
@@ -310,28 +329,32 @@ export default function Leaderboard() {
               <p className="text-gray-400 mt-3">Loading tournament leaderboard...</p>
             </div>
           ) : !espnData || espnData.golfers.length === 0 ? (
-            /* Pre-tournament: show full field as one unified list with blank scoring */
+            /* Pre-tournament: show full field sorted by tee time */
             (() => {
-              const tierGolferIds = new Set(tiers.flatMap((t) => t.golfers.map((g) => g.id)));
-              const tierGolfers = tiers.flatMap((t) =>
-                t.golfers.map((g) => ({ id: g.id, name: g.name }))
-              );
-              const nonTierGolfers = scores
-                .filter((s) => !tierGolferIds.has(s.id))
-                .map((s) => ({ id: s.id, name: s.name }));
-              const allGolfers = [...tierGolfers, ...nonTierGolfers].sort((a, b) => {
-                const aWD = scoreMap.get(a.id)?.status === 'withdrawn' ? 1 : 0;
-                const bWD = scoreMap.get(b.id)?.status === 'withdrawn' ? 1 : 0;
-                if (aWD !== bWD) return aWD - bWD;
-                return a.name.localeCompare(b.name);
-              });
+              // Build name → golfer ID map from Firestore data
+              const nameToId = new Map<string, string>();
+              tiers.forEach((t) => t.golfers.forEach((g) => nameToId.set(g.name.toLowerCase().trim(), g.id)));
+              scores.forEach((s) => nameToId.set(s.name.toLowerCase().trim(), s.id));
+
+              // Flatten tee times list in order; separate WD to bottom
+              const active: Array<{ name: string; id: string; teeTime: string }> = [];
+              const withdrawn: Array<{ name: string; id: string; teeTime: string }> = [];
+              for (const group of ROUND1_TEE_TIMES) {
+                for (const name of group.names) {
+                  const id = nameToId.get(name.toLowerCase().trim()) ?? name;
+                  const status = scoreMap.get(id)?.status;
+                  (status === 'withdrawn' ? withdrawn : active).push({ name, id, teeTime: group.time });
+                }
+              }
+              const allGolfers = [...active, ...withdrawn];
               if (allGolfers.length === 0) return null;
-              let nonWDIdx = 0;
+
+              let rowNum = 0;
               return (
                 <>
                   <div className="px-4 py-2 bg-gray-50 border-b text-xs text-gray-500 flex justify-between items-center">
                     <span>{tournament.name} &mdash; {allGolfers.length} golfers</span>
-                    <span className="text-gray-400">Tee times TBA &mdash; scores will appear once Round 1 begins</span>
+                    <span className="text-gray-400">Round 1 tee times &mdash; scores will appear once play begins</span>
                   </div>
                   <div className="overflow-x-auto">
                     <table className="w-full text-sm">
@@ -341,22 +364,21 @@ export default function Leaderboard() {
                           <th className="text-left px-4 py-3">Golfer</th>
                           <th className="text-center px-4 py-3">Score</th>
                           <th className="text-center px-4 py-3">Today</th>
-                          <th className="text-center px-4 py-3">Thru</th>
+                          <th className="text-center px-4 py-3">Tee Time</th>
                           <th className="text-center px-4 py-3">Pts</th>
                         </tr>
                       </thead>
                       <tbody>
                         {allGolfers.map((g, idx) => {
-                          const golferStatus = scoreMap.get(g.id)?.status;
-                          const isWD = golferStatus === 'withdrawn';
-                          if (!isWD) nonWDIdx++;
+                          const isWD = scoreMap.get(g.id)?.status === 'withdrawn';
+                          if (!isWD) rowNum++;
                           return (
                             <tr
-                              key={g.id}
+                              key={g.id + idx}
                               className={isWD ? 'bg-gray-50 border-b border-gray-100 text-gray-400' : idx % 2 === 0 ? 'bg-white border-b border-gray-100' : 'bg-gray-50 border-b border-gray-100'}
                             >
                               <td className="px-4 py-2.5 font-semibold text-gray-400">
-                                {isWD ? 'WD' : nonWDIdx}
+                                {isWD ? 'WD' : rowNum}
                               </td>
                               <td className="px-4 py-2.5 font-medium">
                                 {isWD ? (
@@ -370,7 +392,9 @@ export default function Leaderboard() {
                               </td>
                               <td className="px-4 py-2.5 text-center text-gray-400">--</td>
                               <td className="px-4 py-2.5 text-center text-gray-400">--</td>
-                              <td className="px-4 py-2.5 text-center text-gray-400">--</td>
+                              <td className="px-4 py-2.5 text-center text-gray-500 font-medium">
+                                {isWD ? '--' : g.teeTime}
+                              </td>
                               <td className="px-4 py-2.5 text-center text-gray-400">--</td>
                             </tr>
                           );
@@ -389,26 +413,28 @@ export default function Leaderboard() {
                   {espnData.cutPlayerCount > 0 &&
                     ` \u2022 ${espnData.cutPlayerCount} made the cut`}
                 </span>
-                {lastUpdated && (
-                  <span className="text-gray-400">
-                    Updated {lastUpdated.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                  </span>
-                )}
+                <span className="text-gray-400">
+                  {isPrePlay
+                    ? 'Round 1 tee times \u2014 scores will appear once play begins'
+                    : lastUpdated
+                      ? `Updated ${lastUpdated.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`
+                      : null}
+                </span>
               </div>
               <div className="overflow-x-auto">
                 <table className="w-full text-sm">
                   <thead className="bg-masters-green text-white">
                     <tr>
-                      <th className="text-left px-4 py-3">Pos</th>
+                      <th className="text-left px-4 py-3">{isPrePlay ? '#' : 'Pos'}</th>
                       <th className="text-left px-4 py-3">Golfer</th>
                       <th className="text-center px-4 py-3">Score</th>
                       <th className="text-center px-4 py-3">Today</th>
-                      <th className="text-center px-4 py-3">Thru</th>
+                      <th className="text-center px-4 py-3">{isPrePlay ? 'Tee Time' : 'Thru'}</th>
                       <th className="text-center px-4 py-3">Pts</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {espnGolfers.map((g, idx) => (
+                    {displayGolfers.map((g, idx) => (
                       <tr
                         key={g.id + idx}
                         className={`border-b border-gray-100 ${
@@ -426,12 +452,16 @@ export default function Leaderboard() {
                             ? 'CUT'
                             : g.status === 'withdrawn'
                               ? 'WD'
-                              : g.position}
+                              : isPrePlay
+                                ? idx + 1
+                                : g.position}
                         </td>
                         <td className="px-4 py-2.5 font-medium text-gray-900">{g.name}</td>
                         <td className="px-4 py-2.5 text-center">{g.score}</td>
                         <td className="px-4 py-2.5 text-center">{g.today}</td>
-                        <td className="px-4 py-2.5 text-center">{g.thru}</td>
+                        <td className={`px-4 py-2.5 text-center ${isPrePlay && g.thru !== '--' ? 'font-medium text-gray-700' : ''}`}>
+                          {g.thru}
+                        </td>
                         <td className="px-4 py-2.5 text-center font-bold text-masters-green">
                           {g.poolPoints === null ? '--' : g.poolPoints}
                         </td>
