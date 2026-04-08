@@ -9,7 +9,7 @@ export interface TeeTimeGroup {
 }
 
 export const ROUND1_TEE_TIMES: TeeTimeGroup[] = [
-  { time: '7:40 AM', names: ['John Keefer', 'Haotong Li'] },
+  { time: '7:40 AM', names: ['Johnny Keefer', 'Haotong Li'] },
   { time: '7:50 AM', names: ['Naoyuki Kataoka', 'Max Homa', 'Carlos Ortiz'] },
   { time: '8:02 AM', names: ['Jose Maria Olazabal', 'Rasmus Neergaard-Petersen', 'Aldrich Potgieter'] },
   { time: '8:14 AM', names: ['Angel Cabrera', 'Sami Valimaki', 'Jackson Herrington'] },
@@ -25,13 +25,13 @@ export const ROUND1_TEE_TIMES: TeeTimeGroup[] = [
   { time: '10:19 AM', names: ['Hideki Matsuyama', 'Collin Morikawa', 'Russell Henley'] },
   { time: '10:31 AM', names: ['Rory McIlroy', 'Cameron Young', 'Mason Howell'] },
   { time: '10:43 AM', names: ['Viktor Hovland', 'Patrick Cantlay', 'Alex Noren'] },
-  { time: '11:03 AM', names: ['Sam Stevens', 'Sung-Jae Im'] },
+  { time: '11:03 AM', names: ['Sam Stevens', 'Sungjae Im'] },
   { time: '11:15 AM', names: ['Andrew Novak', 'Tom McKibbin', 'Brian Campbell'] },
   { time: '11:27 AM', names: ['Mike Weir', 'Wyndham Clark', 'Mateo Pulcini'] },
   { time: '11:39 AM', names: ['Zach Johnson', 'Michael Kim', 'Nicolai Hojgaard'] },
   { time: '11:51 AM', names: ['Danny Willett', 'Davis Riley', 'Ethan Fang'] },
   { time: '12:03 PM', names: ['Adam Scott', 'Daniel Berger', 'Brian Harman'] },
-  { time: '12:15 PM', names: ['Fred Couples', 'Min Woo Lee', 'Pongsapak Laopakdee'] },
+  { time: '12:15 PM', names: ['Fred Couples', 'Min Woo Lee', 'Fifa Laopakdee'] },
   { time: '12:27 PM', names: ['Sergio Garcia', 'Aaron Rai', 'Jacob Bridgeman'] },
   { time: '12:44 PM', names: ['Harry Hall', 'Corey Conners', 'Michael Brennan'] },
   { time: '12:56 PM', names: ['J.J. Spaun', 'Maverick McNealy', 'Tyrrell Hatton'] },

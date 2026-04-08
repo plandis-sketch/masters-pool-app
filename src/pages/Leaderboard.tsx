@@ -148,7 +148,7 @@ export default function Leaderboard() {
   // ESPN sometimes returns accented names (e.g. "José María Olazábal") while our constant
   // uses plain ASCII ("Jose Maria Olazabal").
   const normalizeName = (name: string) =>
-    name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+    name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ø/gi, 'o').toLowerCase().trim();
 
   // Tee time lookup by golfer name (case-insensitive) from the hardcoded Round 1 schedule.
   // Used as fallback when ESPN doesn't embed tee times in its pre-tournament scoreboard
