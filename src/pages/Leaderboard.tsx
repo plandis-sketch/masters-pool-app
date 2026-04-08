@@ -144,6 +144,12 @@ export default function Leaderboard() {
     return positions;
   }, [rankedEntries]);
 
+  // Normalize a name for tee-time lookup: strip accents/diacritics, lowercase, trim.
+  // ESPN sometimes returns accented names (e.g. "José María Olazábal") while our constant
+  // uses plain ASCII ("Jose Maria Olazabal").
+  const normalizeName = (name: string) =>
+    name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase().trim();
+
   // Tee time lookup by golfer name (case-insensitive) from the hardcoded Round 1 schedule.
   // Used as fallback when ESPN doesn't embed tee times in its pre-tournament scoreboard
   // (e.g. the Masters returns bare linescores with no displayValue/statistics).
@@ -151,7 +157,7 @@ export default function Leaderboard() {
     const map = new Map<string, string>();
     for (const group of ROUND1_TEE_TIMES) {
       for (const name of group.names) {
-        map.set(name.toLowerCase().trim(), group.time);
+        map.set(normalizeName(name), group.time);
       }
     }
     return map;
@@ -169,7 +175,7 @@ export default function Leaderboard() {
       // golfer, fall back to the hardcoded schedule (handles Masters and similar events).
       const thru =
         espnIsRound1 && g.thru === '--' && g.status === 'active'
-          ? (teeTimeByName.get(g.name.toLowerCase().trim()) ?? '--')
+          ? (teeTimeByName.get(normalizeName(g.name)) ?? '--')
           : g.thru;
       const hasStarted = g.status !== 'active' || !espnIsRound1 || golferHasStarted(thru);
       return {
