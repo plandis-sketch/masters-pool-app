@@ -34,6 +34,11 @@ try {
 // process.env takes precedence over .env file
 const getEnv = (key) => process.env[key] ?? env[key];
 
+// --- Debug: print raw env values for Gmail credentials ---
+console.log('DEBUG process.env.GMAIL_CLIENT_ID:', JSON.stringify(process.env.GMAIL_CLIENT_ID));
+console.log('DEBUG process.env.GMAIL_CLIENT_SECRET:', JSON.stringify(process.env.GMAIL_CLIENT_SECRET));
+console.log('DEBUG process.env.GMAIL_REFRESH_TOKEN:', JSON.stringify(process.env.GMAIL_REFRESH_TOKEN));
+
 // --- Validate required credentials up front ---
 const REQUIRED = [
   'VITE_FIREBASE_API_KEY',
