@@ -62,6 +62,8 @@ export default function MyEntries() {
     return map;
   }, [espnData]);
 
+  const isRound1 = !espnData || espnData.round <= 1;
+
   const scoreMap = useMemo(() => {
     const map = new Map<string, { points: number; score: string; position: number | null; status: string; hasStarted: boolean }>();
     scores.forEach((s) => {
@@ -70,12 +72,14 @@ export default function MyEntries() {
       const position = livePos ?? s.position;
       const liveThru = status === 'active' ? espnThruByName.get(s.name.toLowerCase().trim()) : undefined;
       const thru = liveThru ?? s.thru;
-      const hasStarted = status !== 'active' || position !== null || golferHasStarted(thru);
+      // Matches Pool Standings logic exactly: cut/withdrawn always count; active golfers only show '--'
+      // on Round 1 before teeing off. On Round 2+, all active golfers have a valid position.
+      const hasStarted = status !== 'active' || !isRound1 || golferHasStarted(thru);
       const points = hasStarted ? calculateGolferPoints(position, status, cutPlayerCount) : 0;
       map.set(s.id, { points, score: s.score, position, status, hasStarted });
     });
     return map;
-  }, [scores, espnByName, espnThruByName, cutPlayerCount]);
+  }, [scores, espnByName, espnThruByName, cutPlayerCount, isRound1]);
 
   const golferNameMap = useMemo(() => {
     const map = new Map<string, string>();
