@@ -12,6 +12,9 @@ function ordinal(n: number): string {
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
 }
 
+const normalizeName = (name: string) =>
+  name.normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/ø/gi, 'o').toLowerCase().trim();
+
 export default function MyEntries() {
   const { user } = useAuth();
   const { tournament } = useTournament();
@@ -45,7 +48,7 @@ export default function MyEntries() {
     if (!espnData) return map;
     espnData.golfers.forEach((g) => {
       if (g.status === 'active') {
-        map.set(g.name.toLowerCase().trim(), g.positionNum);
+        map.set(normalizeName(g.name), g.positionNum);
       }
     });
     return map;
@@ -56,7 +59,7 @@ export default function MyEntries() {
     if (!espnData) return map;
     espnData.golfers.forEach((g) => {
       if (g.status === 'active') {
-        map.set(g.name.toLowerCase().trim(), g.thru);
+        map.set(normalizeName(g.name), g.thru);
       }
     });
     return map;
@@ -66,7 +69,7 @@ export default function MyEntries() {
     const map = new Map<string, string>();
     if (!espnData) return map;
     espnData.golfers.forEach((g) => {
-      map.set(g.name.toLowerCase().trim(), g.score);
+      map.set(normalizeName(g.name), g.score);
     });
     return map;
   }, [espnData]);
@@ -77,12 +80,12 @@ export default function MyEntries() {
     const map = new Map<string, { points: number; score: string; position: number | null; status: string; hasStarted: boolean }>();
     scores.forEach((s) => {
       const status = s.status as 'active' | 'cut' | 'withdrawn';
-      const livePos = status === 'active' ? espnByName.get(s.name.toLowerCase().trim()) : undefined;
+      const livePos = status === 'active' ? espnByName.get(normalizeName(s.name)) : undefined;
       const position = livePos ?? s.position;
-      const liveThru = status === 'active' ? espnThruByName.get(s.name.toLowerCase().trim()) : undefined;
+      const liveThru = status === 'active' ? espnThruByName.get(normalizeName(s.name)) : undefined;
       const thru = liveThru ?? s.thru;
       // Use live ESPN score when available so My Entries matches the Golfer Leaderboard exactly.
-      const liveScore = espnScoreByName.get(s.name.toLowerCase().trim());
+      const liveScore = espnScoreByName.get(normalizeName(s.name));
       const score = liveScore ?? s.score;
       // Matches Pool Standings logic exactly: cut/withdrawn always count; active golfers only show '--'
       // on Round 1 before teeing off. On Round 2+, all active golfers have a valid position.
