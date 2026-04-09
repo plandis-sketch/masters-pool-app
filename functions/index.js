@@ -6,14 +6,8 @@
  */
 
 const { onSchedule } = require("firebase-functions/v2/scheduler");
-const { onDocumentCreated } = require("firebase-functions/v2/firestore");
-const { defineSecret } = require("firebase-functions/params");
 const { logger } = require("firebase-functions");
 const admin = require("firebase-admin");
-
-const gmailClientId = defineSecret("GMAIL_CLIENT_ID");
-const gmailClientSecret = defineSecret("GMAIL_CLIENT_SECRET");
-const gmailRefreshToken = defineSecret("GMAIL_REFRESH_TOKEN");
 
 admin.initializeApp();
 const db = admin.firestore();
@@ -585,109 +579,6 @@ async function scrapeAndUpdate() {
     logger.info(`Saved Daily Leaderboard snapshot for Round ${round}`);
   }
 }
-
-// --- Firestore trigger: send email when admin posts an announcement ---
-
-/**
- * Builds a base64url-encoded RFC 2822 email message.
- * All recipients are in BCC so no one sees the full list.
- */
-function buildRawEmail({ from, bccList, subject, body }) {
-  const bcc = bccList.join(", ");
-  const lines = [
-    `From: Phil's Masters Pool <${from}>`,
-    `To: ${from}`,
-    `Bcc: ${bcc}`,
-    `Subject: ${subject}`,
-    `Content-Type: text/plain; charset=utf-8`,
-    `MIME-Version: 1.0`,
-    ``,
-    body,
-  ];
-  const raw = lines.join("\r\n");
-  return Buffer.from(raw).toString("base64url");
-}
-
-exports.sendAnnouncementEmail = onDocumentCreated(
-  {
-    document: "messages/{messageId}",
-    region: "us-east1",
-    secrets: [gmailClientId, gmailClientSecret, gmailRefreshToken],
-  },
-  async (event) => {
-    const data = event.data?.data();
-    if (!data?.isAnnouncement) return; // only admin announcements
-
-    const content = data.content || "";
-    const authorName = data.authorName || "Admin";
-
-    // Collect all participant emails from Firestore
-    let emails = [];
-    try {
-      const usersSnap = await db.collection("users").get();
-      emails = usersSnap.docs
-        .map((d) => d.data().email)
-        .filter((e) => typeof e === "string" && e.includes("@"));
-    } catch (err) {
-      logger.error("sendAnnouncementEmail: failed to fetch users", err);
-      return;
-    }
-
-    if (emails.length === 0) {
-      logger.info("sendAnnouncementEmail: no recipient emails found, skipping");
-      return;
-    }
-
-    const { google } = require("googleapis");
-    const oauth2Client = new google.auth.OAuth2(
-      process.env.GMAIL_CLIENT_ID,
-      process.env.GMAIL_CLIENT_SECRET
-    );
-    oauth2Client.setCredentials({
-      refresh_token: process.env.GMAIL_REFRESH_TOKEN,
-    });
-    const gmail = google.gmail({ version: "v1", auth: oauth2Client });
-
-    const FROM = "itsphil24@gmail.com";
-    const SUBJECT = "Phil's Masters Pool — New Announcement";
-    const BODY = [
-      `New announcement from ${authorName}:`,
-      ``,
-      content,
-      ``,
-      `---`,
-      `View the full Message Board at https://phils-masters-pool.web.app`,
-    ].join("\n");
-
-    // Gmail allows up to 500 total recipients per message; batch just in case
-    const BATCH_SIZE = 499;
-    for (let i = 0; i < emails.length; i += BATCH_SIZE) {
-      const batch = emails.slice(i, i + BATCH_SIZE);
-      try {
-        await gmail.users.messages.send({
-          userId: "me",
-          requestBody: {
-            raw: buildRawEmail({
-              from: FROM,
-              bccList: batch,
-              subject: SUBJECT,
-              body: BODY,
-            }),
-          },
-        });
-        logger.info(
-          `sendAnnouncementEmail: sent to batch ${Math.floor(i / BATCH_SIZE) + 1} (${batch.length} recipients)`
-        );
-      } catch (err) {
-        logger.error(
-          `sendAnnouncementEmail: failed to send batch ${Math.floor(i / BATCH_SIZE) + 1}`,
-          err
-        );
-        // Log the error but don't rethrow — the announcement is already posted
-      }
-    }
-  }
-);
 
 // --- Scheduled function: runs every 5 minutes ---
 exports.scrapeScores = onSchedule(

@@ -42,12 +42,14 @@ export default function MessageBoard() {
     if (!content || !user) return;
     setPosting(true);
     try {
+      const isAdminAnnouncement = user.isAdmin && isAnnouncement;
       await addDoc(collection(db, 'messages'), {
         authorId: user.uid,
         authorName: user.displayName,
         content,
         createdAt: serverTimestamp(),
-        isAnnouncement: user.isAdmin && isAnnouncement,
+        isAnnouncement: isAdminAnnouncement,
+        emailSent: isAdminAnnouncement ? false : null,
       });
       setText('');
       setIsAnnouncement(false);
