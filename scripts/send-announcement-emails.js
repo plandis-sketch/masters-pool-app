@@ -29,9 +29,25 @@ try {
     if (key && vals.length) env[key.trim()] = vals.join('=').trim();
   });
 } catch {
-  // No .env file — fall back to process.env (GitHub Actions)
+  // No .env file — use process.env only (GitHub Actions)
 }
-const getEnv = (key) => process.env[key] || env[key];
+// process.env takes precedence over .env file
+const getEnv = (key) => process.env[key] ?? env[key];
+
+// --- Validate required credentials up front ---
+const REQUIRED = [
+  'VITE_FIREBASE_API_KEY',
+  'VITE_FIREBASE_PROJECT_ID',
+  'GMAIL_CLIENT_ID',
+  'GMAIL_CLIENT_SECRET',
+  'GMAIL_REFRESH_TOKEN',
+];
+const missing = REQUIRED.filter(k => !getEnv(k));
+if (missing.length > 0) {
+  console.error('Missing required environment variables:', missing.join(', '));
+  console.error('Available env keys (non-VITE):', Object.keys(process.env).filter(k => !k.startsWith('VITE')).join(', '));
+  process.exit(1);
+}
 
 // --- Firebase setup ---
 const firebaseConfig = {
@@ -83,6 +99,8 @@ async function run() {
     return;
   }
 
+  console.log(`Found ${messagesSnap.size} pending announcement(s).`);
+
   // Collect all participant emails
   const usersSnap = await getDocs(collection(db, 'users'));
   const emails = usersSnap.docs
@@ -93,6 +111,8 @@ async function run() {
     console.log('No participant emails found, skipping.');
     return;
   }
+
+  console.log(`Sending to ${emails.length} participant(s).`);
 
   for (const msgDoc of messagesSnap.docs) {
     const { content, authorName } = msgDoc.data();
