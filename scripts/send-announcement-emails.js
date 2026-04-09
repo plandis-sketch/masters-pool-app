@@ -80,11 +80,12 @@ const SUBJECT = "Phil's Masters Pool — New Announcement";
 const BATCH_SIZE = 499; // Gmail max recipients per message
 
 function buildRawEmail({ bccList, subject, body }) {
+  const encodedSubject = `=?utf-8?B?${Buffer.from(subject).toString('base64')}?=`;
   const lines = [
     `From: Phil's Masters Pool <${FROM}>`,
     `To: ${FROM}`,
     `Bcc: ${bccList.join(', ')}`,
-    `Subject: ${subject}`,
+    `Subject: ${encodedSubject}`,
     `Content-Type: text/plain; charset=utf-8`,
     `MIME-Version: 1.0`,
     ``,

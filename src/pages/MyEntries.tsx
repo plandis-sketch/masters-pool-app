@@ -62,6 +62,15 @@ export default function MyEntries() {
     return map;
   }, [espnData]);
 
+  const espnScoreByName = useMemo(() => {
+    const map = new Map<string, string>();
+    if (!espnData) return map;
+    espnData.golfers.forEach((g) => {
+      map.set(g.name.toLowerCase().trim(), g.score);
+    });
+    return map;
+  }, [espnData]);
+
   const isRound1 = !espnData || espnData.round <= 1;
 
   const scoreMap = useMemo(() => {
@@ -72,14 +81,17 @@ export default function MyEntries() {
       const position = livePos ?? s.position;
       const liveThru = status === 'active' ? espnThruByName.get(s.name.toLowerCase().trim()) : undefined;
       const thru = liveThru ?? s.thru;
+      // Use live ESPN score when available so My Entries matches the Golfer Leaderboard exactly.
+      const liveScore = espnScoreByName.get(s.name.toLowerCase().trim());
+      const score = liveScore ?? s.score;
       // Matches Pool Standings logic exactly: cut/withdrawn always count; active golfers only show '--'
       // on Round 1 before teeing off. On Round 2+, all active golfers have a valid position.
       const hasStarted = status !== 'active' || !isRound1 || golferHasStarted(thru);
       const points = hasStarted ? calculateGolferPoints(position, status, cutPlayerCount) : 0;
-      map.set(s.id, { points, score: s.score, position, status, hasStarted });
+      map.set(s.id, { points, score, position, status, hasStarted });
     });
     return map;
-  }, [scores, espnByName, espnThruByName, cutPlayerCount, isRound1]);
+  }, [scores, espnByName, espnThruByName, espnScoreByName, cutPlayerCount, isRound1]);
 
   const golferNameMap = useMemo(() => {
     const map = new Map<string, string>();
