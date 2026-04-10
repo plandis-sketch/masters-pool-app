@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useAuth } from '../../hooks/useAuth';
 import { useTournament, useTiers, useGolferScores, updateGolferScore } from '../../hooks/useTournament';
-import { useEspnLeaderboard } from '../../lib/espnApi';
+import { useEspnContext } from '../../contexts/EspnContext';
 import { calculateGolferPoints, getMissedCutScore, golferHasStarted } from '../../constants/scoring';
 import { Timestamp } from 'firebase/firestore';
 import { Link, useNavigate } from 'react-router-dom';
@@ -12,7 +12,7 @@ export default function ScoreManagement() {
   const { tournament } = useTournament();
   const { tiers } = useTiers(tournament?.id);
   const { scores } = useGolferScores(tournament?.id);
-  const { data: espnData } = useEspnLeaderboard();
+  const { data: espnData } = useEspnContext();
   const navigate = useNavigate();
 
   // Same priority as all other views: ESPN first (authoritative), then Firestore.

@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { useAuth } from '../hooks/useAuth';
 import { useTournament, useTiers, useGolferScores, useEntries, useWithdrawalAlerts } from '../hooks/useTournament';
-import { useEspnLeaderboard } from '../lib/espnApi';
+import { useEspnContext } from '../contexts/EspnContext';
 import { calculateGolferPoints, golferHasStarted } from '../constants/scoring';
 import TierBadge from '../components/common/TierBadge';
 import { useNavigate } from 'react-router-dom';
@@ -22,7 +22,7 @@ export default function MyEntries() {
   const { scores } = useGolferScores(tournament?.id);
   const { entries } = useEntries(tournament?.id);
   const { alerts } = useWithdrawalAlerts(tournament?.id);
-  const { data: espnData } = useEspnLeaderboard();
+  const { data: espnData } = useEspnContext();
   const navigate = useNavigate();
 
   // Deadline logic

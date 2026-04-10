@@ -1,7 +1,7 @@
 import { useState, useMemo } from 'react';
 import { useTournament, useTiers, useGolferScores, useEntries } from '../hooks/useTournament';
 import { useAuth } from '../hooks/useAuth';
-import { useEspnLeaderboard } from '../lib/espnApi';
+import { useEspnContext } from '../contexts/EspnContext';
 import { calculateGolferPoints, golferHasStarted } from '../constants/scoring';
 import { ROUND1_TEE_TIMES, parseTeeTimeMinutes } from '../constants/teeTimes';
 import TierBadge from '../components/common/TierBadge';
@@ -15,7 +15,7 @@ export default function Leaderboard() {
   const { tiers } = useTiers(tournament?.id);
   const { scores } = useGolferScores(tournament?.id);
   const { entries } = useEntries(tournament?.id);
-  const { data: espnData, loading: espnLoading, lastUpdated } = useEspnLeaderboard();
+  const { data: espnData, loading: espnLoading, lastUpdated } = useEspnContext();
 
   // Deadline logic
   const firstTeeTime = tournament?.firstTeeTime?.toDate();
