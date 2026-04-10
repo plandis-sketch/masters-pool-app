@@ -73,9 +73,17 @@ export default function Leaderboard() {
     scores.forEach((s) => {
       const status = s.status as 'active' | 'cut' | 'withdrawn';
       const livePos = status === 'active' ? espnByName.get(s.name.toLowerCase().trim()) : undefined;
-      const position = livePos ?? s.position;
       const liveThru = status === 'active' ? espnThruByName.get(s.name.toLowerCase().trim()) : undefined;
-      const thru = liveThru ?? s.thru;
+      // If Firestore says this player finished the round (thru='F') but ESPN shows them
+      // mid-round (a digit), ESPN has stale data for this player — trust Firestore.
+      const espnIsStale =
+        s.thru === 'F' &&
+        liveThru !== undefined &&
+        liveThru !== 'F' &&
+        liveThru !== '--' &&
+        /^\d+$/.test(liveThru);
+      const position = espnIsStale ? s.position : (livePos ?? s.position);
+      const thru = espnIsStale ? s.thru : (liveThru ?? s.thru);
       // Cut/withdrawn always count. Active golfers only show '--' on Round 1 before teeing off.
       // On Round 2+, all active golfers have a valid position and always receive points.
       const hasStarted = status !== 'active' || !isRound1 || golferHasStarted(thru);
