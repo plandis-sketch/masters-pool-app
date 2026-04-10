@@ -331,12 +331,18 @@ async function scrapeAndUpdate() {
     if (teeTimeStr) espnTeeTimeMap.set(name, new Date(teeTimeStr));
   }
 
-  // Build position map: group competitors by score, assign tied position = min order in group
+  // Build position map: group competitors by score, assign tied position = min order in group.
+  // ESPN's c.score can be a string, number, or object — normalize to a consistent key.
+  const getScoreKey = (score) => {
+    if (score === null || score === undefined) return "unknown";
+    if (typeof score === "object") return String(score.value ?? score.displayValue ?? 999);
+    return String(score);
+  };
   const scoreToMinOrder = new Map();
   for (const c of competitors) {
     const s = (c.status?.displayValue || "").toUpperCase();
     if (s === "CUT" || s === "MC" || s === "WD" || s === "DQ") continue;
-    const scoreKey = String(c.score);
+    const scoreKey = getScoreKey(c.score);
     const order = c.order ?? 999;
     if (!scoreToMinOrder.has(scoreKey) || order < scoreToMinOrder.get(scoreKey)) {
       scoreToMinOrder.set(scoreKey, order);
@@ -344,7 +350,7 @@ async function scrapeAndUpdate() {
   }
   const positionMap = new Map();
   for (const c of competitors) {
-    const scoreKey = String(c.score);
+    const scoreKey = getScoreKey(c.score);
     const tiedPos = scoreToMinOrder.get(scoreKey);
     if (tiedPos != null) {
       positionMap.set(c.id, { position: tiedPos });
@@ -430,6 +436,16 @@ async function scrapeAndUpdate() {
       thru = competitor.status.thru.toString();
       if (thru === "18") thru = "F";
       today = competitor.status.displayValue || "--";
+      // Cross-check: if per-hole linescores show 18 holes, or if round-level value looks like
+      // a full-round stroke total (>= 60), override status.thru — ESPN's thru can get stuck.
+      const currentRoundHoles = currentRoundLS?.linescores || [];
+      const roundVal = currentRoundLS?.value ?? 0;
+      if (currentRoundHoles.length === 18 || (currentRoundHoles.length > 0 && roundVal >= 60)) {
+        thru = "F";
+        if (currentRoundLS.displayValue && currentRoundLS.displayValue !== "-") {
+          today = currentRoundLS.displayValue;
+        }
+      }
     } else if (statusDisplay === "F") {
       thru = "F";
       if (hasCurrentRoundScore) {

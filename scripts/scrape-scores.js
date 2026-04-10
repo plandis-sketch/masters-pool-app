@@ -1,5 +1,5 @@
 /**
- * Automatic Score Scraper — Valero Texas Open 2026
+ * Automatic Score Scraper — Masters Tournament 2026
  *
  * Fetches live scores from ESPN's Golf API and writes to Firestore.
  * Also auto-locks picks when firstTeeTime has passed.
@@ -516,8 +516,11 @@ async function scrapeAndUpdate() {
       // Cross-check: if the current round's per-hole linescores show all 18 holes complete,
       // override the potentially-stale status.thru. ESPN's status.thru can get stuck mid-round;
       // the nested hole-level linescores are more reliable for detecting a finished round.
+      // Also treat as finished if the round-level value >= 60 — a full-round stroke total
+      // (ESPN sometimes has correct aggregate but missing per-hole detail for some players).
       const currentRoundHoles = currentRoundLS?.linescores || [];
-      if (currentRoundHoles.length === 18) {
+      const roundVal = currentRoundLS?.value ?? 0;
+      if (currentRoundHoles.length === 18 || (currentRoundHoles.length > 0 && roundVal >= 60)) {
         thru = 'F';
         if (currentRoundLS.displayValue && currentRoundLS.displayValue !== '-') {
           today = currentRoundLS.displayValue;

@@ -133,9 +133,17 @@ export async function fetchLeaderboard(): Promise<EspnTournamentData | null> {
           today = dv || '--';
           thru = 'F';
         } else if (holes.length > 0) {
-          // Currently on the course
-          today = dv || 'E';
-          thru = String(holes.length);
+          // ESPN has partial hole data. If the round-level value looks like a full-round
+          // stroke total (>= 60), ESPN has the correct aggregate but incomplete hole detail
+          // (known ESPN data bug). Treat as finished rather than stuck mid-round.
+          if (val >= 60) {
+            today = dv || '--';
+            thru = 'F';
+          } else {
+            // Genuinely on the course
+            today = dv || 'E';
+            thru = String(holes.length);
+          }
         } else if (dv === '-' || val === 0) {
           // Current round not yet started. Check if a previous round is complete —
           // if so we're between rounds and should show 'F', not an upcoming tee time.

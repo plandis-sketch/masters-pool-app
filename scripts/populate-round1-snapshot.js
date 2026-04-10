@@ -1,9 +1,12 @@
 /**
  * One-time script: Populate Round 1 Daily Leaderboard snapshot.
  *
- * Reconstructs Round 1 standings from the `roundScores.r1` stroke values
- * stored in golferScores — so it works correctly even after Round 2 has
- * started and live scores have been overwritten.
+ * Uses the same data source as Pool Standings:
+ *   1. Fetches live ESPN positions (authoritative, tie-corrected)
+ *   2. Falls back to Firestore position only if ESPN doesn't have the golfer
+ *   3. Firestore status is authoritative for cut/withdrawn
+ *
+ * This guarantees the snapshot matches what Pool Standings displayed at end of Round 1.
  *
  * Usage:
  *   node scripts/populate-round1-snapshot.js          # dry run (preview only)
@@ -47,8 +50,80 @@ const args = process.argv.slice(2);
 const DRY_RUN = !args.includes('--write');
 const FORCE = args.includes('--force');
 
+const ESPN_URL = 'https://site.api.espn.com/apis/site/v2/sports/golf/pga/scoreboard';
+
+/**
+ * Fetch ESPN leaderboard and return a name→positionNum map for active golfers.
+ * Uses the same tie-correction logic as espnApi.ts in the frontend.
+ * Returns null if ESPN is unreachable or returns no data.
+ */
+async function fetchEspnPositions() {
+  try {
+    const res = await fetch(ESPN_URL);
+    if (!res.ok) { console.warn(`ESPN fetch failed: HTTP ${res.status}`); return null; }
+    const data = await res.json();
+
+    const events = data.events || [];
+    const event =
+      events.find(e => e.status?.type?.state === 'in') ||
+      events.find(e => e.status?.type?.state === 'pre');
+    if (!event) { console.warn('ESPN: no active event found'); return null; }
+
+    const comp = event.competitions?.[0];
+    const competitors = comp?.competitors || [];
+    if (competitors.length === 0) { console.warn('ESPN: no competitors'); return null; }
+
+    const currentRound = comp.status?.period || 1;
+    console.log(`ESPN: event="${event.name}", round=${currentRound}, ${competitors.length} competitors`);
+
+    // Build raw golfer list with sequential order
+    const golfers = competitors.map(c => {
+      const athlete = c.athlete || {};
+      const statusVal = (c.status?.displayValue || '').toUpperCase().trim();
+      let status = 'active';
+      if (statusVal === 'CUT' || statusVal === 'MC' || statusVal === 'DQ') status = 'cut';
+      else if (statusVal === 'WD' || statusVal === 'W/D') status = 'withdrawn';
+      const name = (athlete.displayName || athlete.fullName || '').toLowerCase().trim();
+      const order = c.order || 999;
+      const score = typeof c.score === 'string' ? c.score : (c.score?.displayValue || '--');
+      return { name, order, status, score };
+    });
+
+    // Apply true tied-position correction (same as espnApi.ts lines 196-213):
+    // ESPN's `order` is sequential — group active golfers by score-to-par
+    // and give each group the minimum order in that group.
+    const scoreToMinPos = new Map();
+    for (const g of golfers) {
+      if (g.status === 'active' && g.score !== '--') {
+        const existing = scoreToMinPos.get(g.score);
+        if (existing === undefined || g.order < existing) scoreToMinPos.set(g.score, g.order);
+      }
+    }
+    const positionByName = new Map();
+    for (const g of golfers) {
+      if (g.status === 'active') {
+        const truePos = scoreToMinPos.get(g.score) ?? g.order;
+        positionByName.set(g.name, truePos);
+      }
+    }
+
+    return positionByName;
+  } catch (err) {
+    console.warn('ESPN fetch error:', err.message);
+    return null;
+  }
+}
+
 async function populateRound1Snapshot() {
   console.log(DRY_RUN ? '\n[DRY RUN — pass --write to save]\n' : '\n[WRITING to Firestore]\n');
+
+  // Fetch ESPN positions first — same source as Pool Standings
+  const espnPositions = await fetchEspnPositions();
+  if (espnPositions) {
+    console.log(`ESPN positions loaded for ${espnPositions.size} active golfers`);
+  } else {
+    console.warn('WARNING: ESPN unavailable — falling back to Firestore positions only');
+  }
 
   // Find active tournament
   const tournamentsSnap = await getDocs(collection(db, 'tournaments'));
@@ -68,7 +143,7 @@ async function populateRound1Snapshot() {
     console.log('Round 1 snapshot exists — overwriting (--force).');
   }
 
-  // Load roster (for golfer names as fallback)
+  // Load roster
   const tiersSnap = await getDocs(
     query(collection(db, 'tournaments', tournament.id, 'tiers'), orderBy('tierNumber'))
   );
@@ -76,7 +151,7 @@ async function populateRound1Snapshot() {
   tiersSnap.docs.forEach(d => d.data().golfers.forEach(g => allGolfers.push(g)));
   console.log(`Roster: ${allGolfers.length} golfers across ${tiersSnap.docs.length} tiers`);
 
-  // Load current golfer scores (contains roundScores.r1 for each golfer)
+  // Load Firestore golfer scores (authoritative for status: cut/withdrawn)
   const scoresSnap = await getDocs(
     collection(db, 'tournaments', tournament.id, 'golferScores')
   );
@@ -84,54 +159,51 @@ async function populateRound1Snapshot() {
   scoresSnap.docs.forEach(d => golferScores.set(d.id, { id: d.id, ...d.data() }));
   console.log(`Loaded ${golferScores.size} golfer score documents`);
 
-  // --- Reconstruct Round 1 standings from roundScores.r1 ---
-  //
-  // At the end of Round 1 there is no cut yet, so all players are "active".
-  // Points = R1 tournament position (rank by R1 strokes, ties share same rank).
-  // WD players who have no R1 score get the missed-cut default (51 pts:
-  // cutPlayerCount was null at R1 → default 50 → missedCutScore = 51).
+  // --- Resolve position for each golfer ---
+  // Priority matches Pool Standings exactly:
+  //   1. cut/withdrawn (Firestore status) → WD_POINTS
+  //   2. ESPN positionNum (live, tie-corrected) for active players
+  //   3. Firestore position as fallback
 
   const WD_POINTS = 51;
-  const playersWithR1 = [];
+  const r1Points = new Map();
+  const espnMisses = [];
   const wdPlayers = [];
+  let espnHits = 0;
+  let firestoreFallbacks = 0;
 
   for (const golfer of allGolfers) {
     const score = golferScores.get(golfer.id);
-    if (!score) {
-      wdPlayers.push({ id: golfer.id, name: golfer.name });
+    const name = (score?.name || golfer.name || '').toLowerCase().trim();
+    const status = score?.status || 'active';
+
+    if (status === 'cut' || status === 'withdrawn') {
+      r1Points.set(golfer.id, WD_POINTS);
+      wdPlayers.push(score?.name || golfer.name);
       continue;
     }
-    const r1 = score.roundScores?.r1;
-    if (r1 !== null && r1 !== undefined) {
-      playersWithR1.push({ id: golfer.id, name: score.name || golfer.name, r1 });
+
+    // Active player: prefer ESPN, fall back to Firestore
+    const espnPos = espnPositions?.get(name);
+    if (espnPos !== undefined) {
+      r1Points.set(golfer.id, espnPos);
+      espnHits++;
     } else {
-      wdPlayers.push({ id: golfer.id, name: score.name || golfer.name });
+      const fsPos = score?.position;
+      if (fsPos !== null && fsPos !== undefined) {
+        r1Points.set(golfer.id, fsPos);
+        firestoreFallbacks++;
+        espnMisses.push(score?.name || golfer.name);
+      } else {
+        r1Points.set(golfer.id, WD_POINTS);
+        wdPlayers.push(score?.name || golfer.name);
+      }
     }
   }
 
-  // Sort by R1 strokes ascending (fewer strokes = better position in golf)
-  playersWithR1.sort((a, b) => a.r1 - b.r1);
-
-  // Assign tied positions: position = (number of players with fewer strokes) + 1
-  const r1Points = new Map();
-  let pos = 1;
-  let i = 0;
-  while (i < playersWithR1.length) {
-    const strokesAtPos = playersWithR1[i].r1;
-    let j = i;
-    while (j < playersWithR1.length && playersWithR1[j].r1 === strokesAtPos) j++;
-    // Players i..j-1 share the same position
-    for (let k = i; k < j; k++) r1Points.set(playersWithR1[k].id, pos);
-    pos = j + 1;
-    i = j;
-  }
-  for (const wd of wdPlayers) r1Points.set(wd.id, WD_POINTS);
-
-  console.log(`\nR1 field: ${playersWithR1.length} players with R1 strokes`);
-  console.log(`WD/missing: ${wdPlayers.length} players → ${WD_POINTS} pts each`);
-  if (wdPlayers.length > 0) {
-    console.log('  WD players: ' + wdPlayers.map(w => w.name).join(', '));
-  }
+  console.log(`\nPosition source: ${espnHits} from ESPN, ${firestoreFallbacks} Firestore fallbacks, ${wdPlayers.length} WD/missing`);
+  if (espnMisses.length > 0) console.log('  ESPN misses (used Firestore): ' + espnMisses.join(', '));
+  if (wdPlayers.length > 0) console.log('  WD/missing (51 pts): ' + wdPlayers.join(', '));
 
   // --- Build entry standings ---
   const entriesSnap = await getDocs(

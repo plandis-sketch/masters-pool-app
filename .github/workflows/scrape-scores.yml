@@ -4,9 +4,11 @@ on:
   schedule:
     # Every hour in the days leading up to the Masters — pre-WD detection (April 6-8)
     - cron: '0 11-23 6-8 4 *'
-    # Every 5 minutes during Masters tournament days (April 9-12, Thu-Sun, 7am-8pm ET / 11:00-00:00 UTC)
+    # Every 5 minutes during Masters tournament days (April 9-12, Thu-Sun, 7am-11pm ET)
+    # 11:00-23:00 UTC = 7am-7pm ET  |  0:00-3:59 UTC next day = 8pm-11:59pm ET prior day
     # UPDATE THESE DATES for each new tournament.
     - cron: '*/5 11-23 9-12 4 0,4-6'
+    - cron: '*/5 0-3 10-13 4 *'
   workflow_dispatch: # Allow manual trigger from GitHub UI
 
 jobs:

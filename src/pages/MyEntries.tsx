@@ -81,9 +81,17 @@ export default function MyEntries() {
     scores.forEach((s) => {
       const status = s.status as 'active' | 'cut' | 'withdrawn';
       const livePos = status === 'active' ? espnByName.get(normalizeName(s.name)) : undefined;
-      const position = livePos ?? s.position;
       const liveThru = status === 'active' ? espnThruByName.get(normalizeName(s.name)) : undefined;
-      const thru = liveThru ?? s.thru;
+      // If Firestore says this player finished (thru='F') but ESPN shows them mid-round,
+      // ESPN has stale data — trust Firestore. Matches Leaderboard.tsx espnIsStale check.
+      const espnIsStale =
+        s.thru === 'F' &&
+        liveThru !== undefined &&
+        liveThru !== 'F' &&
+        liveThru !== '--' &&
+        /^\d+$/.test(liveThru);
+      const position = espnIsStale ? s.position : (livePos ?? s.position);
+      const thru = espnIsStale ? s.thru : (liveThru ?? s.thru);
       // Use live ESPN score when available so My Entries matches the Golfer Leaderboard exactly.
       const liveScore = espnScoreByName.get(normalizeName(s.name));
       const score = liveScore ?? s.score;
