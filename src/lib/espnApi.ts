@@ -137,13 +137,34 @@ export async function fetchLeaderboard(): Promise<EspnTournamentData | null> {
           today = dv || 'E';
           thru = String(holes.length);
         } else if (dv === '-' || val === 0) {
-          // Not yet started — extract tee time from stats
-          today = '--';
-          const stats = currentRoundLs.statistics?.categories?.[0]?.stats || [];
-          const teeTimeEntry = stats.length > 0 ? stats[stats.length - 1] : null;
-          if (teeTimeEntry?.displayValue && /\d{1,2}:\d{2}/.test(teeTimeEntry.displayValue)) {
-            thru = formatTeeTime(teeTimeEntry.displayValue);
+          // Current round not yet started. Check if a previous round is complete —
+          // if so we're between rounds and should show 'F', not an upcoming tee time.
+          const prevRoundLs = allLinescores.find((ls: any) => ls.period === currentRound - 1);
+          const prevRoundHoles: any[] = prevRoundLs?.linescores || [];
+          if (currentRound > 1 && prevRoundHoles.length === 18) {
+            // Between rounds: show the completed round's score and 'F'
+            today = prevRoundLs?.displayValue || '--';
+            thru = 'F';
+          } else {
+            // Genuinely pre-play (Round 1 not started yet) — show tee time
+            today = '--';
+            const stats = currentRoundLs.statistics?.categories?.[0]?.stats || [];
+            const teeTimeEntry = stats.length > 0 ? stats[stats.length - 1] : null;
+            if (teeTimeEntry?.displayValue && /\d{1,2}:\d{2}/.test(teeTimeEntry.displayValue)) {
+              thru = formatTeeTime(teeTimeEntry.displayValue);
+            }
           }
+        }
+      }
+
+      // Fallback: no current-round linescore at all, but a previous round is complete.
+      // This happens between rounds before ESPN populates the next round's placeholder entry.
+      if (today === '--' && thru === '--' && status === 'active' && currentRound > 1) {
+        const prevRoundLs = allLinescores.find((ls: any) => ls.period === currentRound - 1);
+        const prevRoundHoles: any[] = prevRoundLs?.linescores || [];
+        if (prevRoundHoles.length === 18) {
+          today = prevRoundLs?.displayValue || '--';
+          thru = 'F';
         }
       }
 

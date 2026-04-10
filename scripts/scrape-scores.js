@@ -513,6 +513,16 @@ async function scrapeAndUpdate() {
       thru = competitor.status.thru.toString();
       if (thru === '18') thru = 'F';
       today = competitor.status.displayValue || '--';
+      // Cross-check: if the current round's per-hole linescores show all 18 holes complete,
+      // override the potentially-stale status.thru. ESPN's status.thru can get stuck mid-round;
+      // the nested hole-level linescores are more reliable for detecting a finished round.
+      const currentRoundHoles = currentRoundLS?.linescores || [];
+      if (currentRoundHoles.length === 18) {
+        thru = 'F';
+        if (currentRoundLS.displayValue && currentRoundLS.displayValue !== '-') {
+          today = currentRoundLS.displayValue;
+        }
+      }
     } else if (statusDisplay === 'F') {
       // Finished current round
       thru = 'F';
