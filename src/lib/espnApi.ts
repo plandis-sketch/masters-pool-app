@@ -145,33 +145,39 @@ export async function fetchLeaderboard(): Promise<EspnTournamentData | null> {
             thru = String(holes.length);
           }
         } else if (dv === '-' || val === 0) {
-          // Current round not yet started. Check if a previous round is complete —
-          // if so we're between rounds and should show 'F', not an upcoming tee time.
-          const prevRoundLs = allLinescores.find((ls: any) => ls.period === currentRound - 1);
-          const prevRoundHoles: any[] = prevRoundLs?.linescores || [];
-          if (currentRound > 1 && prevRoundHoles.length === 18) {
-            // Between rounds: show the completed round's score and 'F'
-            today = prevRoundLs?.displayValue || '--';
-            thru = 'F';
-          } else {
-            // Genuinely pre-play (Round 1 not started yet) — show tee time
+          // Current round not yet started for this player.
+          // Check for an embedded tee time FIRST — this handles both Round 1 pre-play
+          // and Round 2+ where the player hasn't teed off yet. If a tee time exists,
+          // show it rather than falling through to the "between rounds" F logic, which
+          // would incorrectly display yesterday's 'F' while Round 2 is actively in progress.
+          const stats = currentRoundLs.statistics?.categories?.[0]?.stats || [];
+          const teeTimeEntry = stats.length > 0 ? stats[stats.length - 1] : null;
+          const hasTeeTime =
+            teeTimeEntry?.displayValue && /\d{1,2}:\d{2}/.test(teeTimeEntry.displayValue);
+          if (hasTeeTime) {
             today = '--';
-            const stats = currentRoundLs.statistics?.categories?.[0]?.stats || [];
-            const teeTimeEntry = stats.length > 0 ? stats[stats.length - 1] : null;
-            if (teeTimeEntry?.displayValue && /\d{1,2}:\d{2}/.test(teeTimeEntry.displayValue)) {
-              thru = formatTeeTime(teeTimeEntry.displayValue);
+            thru = formatTeeTime(teeTimeEntry.displayValue);
+          } else {
+            // No tee time published yet — could be between rounds before ESPN adds next-round data.
+            const prevRoundLs = allLinescores.find((ls: any) => ls.period === currentRound - 1);
+            const prevRoundHoles: any[] = prevRoundLs?.linescores || [];
+            if (currentRound > 1 && prevRoundHoles.length === 18) {
+              // Between rounds with no tee time: show previous round finished state.
+              today = '--';
+              thru = 'F';
             }
+            // else: Round 1, no tee time in ESPN data — Leaderboard.tsx hardcoded fallback handles it.
           }
         }
       }
 
       // Fallback: no current-round linescore at all, but a previous round is complete.
       // This happens between rounds before ESPN populates the next round's placeholder entry.
+      // today stays '--' — this player hasn't played today's round yet.
       if (today === '--' && thru === '--' && status === 'active' && currentRound > 1) {
         const prevRoundLs = allLinescores.find((ls: any) => ls.period === currentRound - 1);
         const prevRoundHoles: any[] = prevRoundLs?.linescores || [];
         if (prevRoundHoles.length === 18) {
-          today = prevRoundLs?.displayValue || '--';
           thru = 'F';
         }
       }
