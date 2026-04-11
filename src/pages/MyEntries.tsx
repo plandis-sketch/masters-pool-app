@@ -31,16 +31,17 @@ export default function MyEntries() {
   const isLocked = tournament?.picksLocked || teeTimePassed;
 
   // cutPlayerCount: null when no cut has happened yet (rounds 1-2 — no cap on points).
-  // Priority: ESPN live (authoritative count of who made cut) → Firestore → detect from scores → null.
-  // ESPN is checked first because the scraper may have locked a slightly wrong count in Firestore.
+  // Priority: Firestore (locked, authoritative) → detect from scores → null.
+  // Firestore is trusted first because the scraper locks the value once and it cannot change.
+  // ESPN's computed count is unreliable — cut players often have placeholder Round 3 linescore
+  // entries in ESPN's data which inflate the "active" count. Firestore is the source of truth.
   const cutPlayerCount = useMemo((): number | null => {
-    if (espnData && espnData.cutPlayerCount > 0) return espnData.cutPlayerCount;
     if (tournament?.cutPlayerCount && tournament.cutPlayerCount > 0) return tournament.cutPlayerCount;
     const activeInFirestore = scores.filter((s) => s.status === 'active').length;
     if (activeInFirestore > 0 && scores.some((s) => s.status === 'cut'))
       return activeInFirestore;
     return null; // No cut yet — no cap on points during rounds 1-2
-  }, [espnData, scores, tournament?.cutPlayerCount]);
+  }, [scores, tournament?.cutPlayerCount]);
 
   // ESPN live position and thru lookup by name (for active players only).
   const espnByName = useMemo(() => {

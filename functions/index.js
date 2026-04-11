@@ -295,22 +295,31 @@ async function scrapeAndUpdate() {
     }
   }
 
-  // Count active competitors from ESPN for cut detection.
-  // Use both status flag AND linescore count — ESPN doesn't always flag cut players.
-  const activeCompetitors = competitors.filter((c) => {
-    const s = (c.status?.displayValue || "").toUpperCase();
-    if (s === "CUT" || s === "MC" || s === "WD" || s === "DQ") return false;
-    // If R3+, players with < 3 linescores missed the cut
-    if (espnRound >= 3 && (c.linescores || []).length < 3) return false;
-    return true;
-  });
-
   // Detect cut: ESPN is showing explicit CUT/MC players (end of R2 or later),
   // OR we're already into R3. ESPN marks cut players before advancing to R3,
   // so this fires at end-of-R2 without waiting for R3 to begin.
   const espnHasCutPlayers = competitors.some((c) => {
     const s = (c.status?.displayValue || "").toUpperCase();
     return s === "CUT" || s === "MC";
+  });
+
+  // Count active competitors from ESPN for cut detection.
+  // Use both status flag AND linescore count — ESPN doesn't always flag all cut players
+  // immediately. The linescore threshold is the number of completed rounds needed to
+  // have made the cut: 2 rounds completed when the cut fires (end of R2), 3 when in R3+.
+  const cutRoundThreshold = espnHasCutPlayers ? 2 : (espnRound >= 3 ? espnRound - 1 : 0);
+  const activeCompetitors = competitors.filter((c) => {
+    const s = (c.status?.displayValue || "").toUpperCase();
+    if (s === "CUT" || s === "MC" || s === "WD" || s === "DQ") return false;
+    // If the cut has been made (or we're in R3+), players with fewer linescores than
+    // the cut threshold missed the cut.
+    if (cutRoundThreshold > 0) {
+      const completedRounds = (c.linescores || []).filter(
+        (ls) => ls.value !== undefined && ls.displayValue !== "-" && ls.displayValue !== "--"
+      ).length;
+      if (completedRounds < cutRoundThreshold) return false;
+    }
+    return true;
   });
 
   // Lock cutPlayerCount: once set in Firestore, never recalculate.

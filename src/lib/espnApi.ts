@@ -71,14 +71,23 @@ export async function fetchLeaderboard(): Promise<EspnTournamentData | null> {
     const hasCut = currentRound >= 3;
     let cutPlayerCount = 0;
 
-    // First pass: count active players to establish the cut score
+    // First pass: count active players to establish the cut score.
+    // A player made the cut if: not flagged CUT/MC/DQ/WD by ESPN, AND has a real (non-placeholder)
+    // linescore for the current round. ESPN often adds placeholder entries (displayValue === '-')
+    // for all rounds including ones cut players never played — we must exclude these.
     if (hasCut) {
       for (const c of competitors) {
         const statusVal = (c.status?.displayValue || '').toUpperCase().trim();
         const allLs: any[] = c.linescores || [];
         const currentRoundLs = allLs.find((ls: any) => ls.period === currentRound);
+        const isRealScore =
+          currentRoundLs &&
+          currentRoundLs.displayValue !== '-' &&
+          currentRoundLs.displayValue !== '--' &&
+          currentRoundLs.value !== undefined &&
+          (currentRoundLs.value !== 0 || (currentRoundLs.linescores || []).length > 0);
         const isCutByStatus = statusVal === 'CUT' || statusVal === 'MC' || statusVal === 'DQ';
-        const isCutByRound = !currentRoundLs && !isCutByStatus && statusVal !== 'WD' && statusVal !== 'W/D';
+        const isCutByRound = !isRealScore && !isCutByStatus && statusVal !== 'WD' && statusVal !== 'W/D';
         if (!isCutByStatus && !isCutByRound && statusVal !== 'WD' && statusVal !== 'W/D') {
           cutPlayerCount++;
         }
