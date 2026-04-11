@@ -295,7 +295,7 @@ async function scrapeAndUpdate() {
     }
   }
 
-  // Count active competitors from ESPN for initial cut detection.
+  // Count active competitors from ESPN for cut detection.
   // Use both status flag AND linescore count — ESPN doesn't always flag cut players.
   const activeCompetitors = competitors.filter((c) => {
     const s = (c.status?.displayValue || "").toUpperCase();
@@ -305,10 +305,18 @@ async function scrapeAndUpdate() {
     return true;
   });
 
+  // Detect cut: ESPN is showing explicit CUT/MC players (end of R2 or later),
+  // OR we're already into R3. ESPN marks cut players before advancing to R3,
+  // so this fires at end-of-R2 without waiting for R3 to begin.
+  const espnHasCutPlayers = competitors.some((c) => {
+    const s = (c.status?.displayValue || "").toUpperCase();
+    return s === "CUT" || s === "MC";
+  });
+
   // Lock cutPlayerCount: once set in Firestore, never recalculate.
   // This prevents refresh cycles from changing the cut score.
   let cutPlayerCount = tournament.cutPlayerCount;
-  if (!cutPlayerCount && espnRound >= 3 && activeCompetitors.length > 0) {
+  if (!cutPlayerCount && (espnRound >= 3 || espnHasCutPlayers) && activeCompetitors.length > 0) {
     cutPlayerCount = activeCompetitors.length;
     await db.collection("tournaments").doc(tournament.id).update({ cutPlayerCount });
     logger.info(`Locked cutPlayerCount = ${cutPlayerCount}`);
