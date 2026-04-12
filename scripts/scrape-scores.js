@@ -401,12 +401,17 @@ async function scrapeAndUpdate() {
     console.log('Locked cutPlayerCount = ' + cutPlayerCount);
   }
 
-  // Build set of golfer IDs already flagged as cut/withdrawn in Firestore.
-  // Once a player is marked cut, that status is permanent for the tournament.
+  // Build set of golfer IDs that ESPN EXPLICITLY confirms as cut/withdrawn in THIS run.
+  // The permanent lock is based on ESPN's current status flags, NOT on Firestore history.
+  // Locking from Firestore history caused false positives: early-R3 linescore detection
+  // wrongly marked active players as cut, then the Firestore lock prevented correction.
   const lockedCutGolferIds = new Set();
-  for (const [id, data] of existingScores) {
-    if (data.status === 'cut' || data.status === 'withdrawn') {
-      lockedCutGolferIds.add(id);
+  for (const competitor of competitors) {
+    const s = (competitor.status?.displayValue || '').toUpperCase().trim();
+    if (s === 'CUT' || s === 'MC' || s === 'WD' || s === 'W/D' || s === 'DQ') {
+      const name = competitor.athlete?.displayName || competitor.athlete?.fullName || '';
+      const g = findBestMatch(name, allGolfers);
+      if (g) lockedCutGolferIds.add(g.id);
     }
   }
 
@@ -474,18 +479,25 @@ async function scrapeAndUpdate() {
       status = 'active';
     }
 
-    // Linescore-based cut detection: ESPN doesn't always flag cut players explicitly.
-    // If we're in R3+ and the player has fewer linescores than the current round, they missed the cut.
-    if (status === 'active' && espnRound >= 3) {
-      const linescoreCount = (competitor.linescores || []).length;
-      if (linescoreCount < 3) {
+    // Linescore-based cut detection (R4 only): if it's Round 4 and a player has no
+    // completed R3 linescore, they didn't make the cut and ESPN may not have flagged
+    // them yet. Only fires in R4 — never in R3 — to avoid false positives at the
+    // start of R3 before players have teed off (which was the root cause of the
+    // permanent-lock bug that trapped active players as "cut").
+    if (status === 'active' && espnRound >= 4) {
+      const hasCompletedR3 = (competitor.linescores || []).some(
+        ls => ls.period === 3 && ls.value !== undefined && ls.displayValue !== '-' && ls.displayValue !== '--'
+      );
+      if (!hasCompletedR3) {
         status = 'cut';
         position = null;
       }
     }
 
-    // Permanent lock: if this golfer was already marked cut/withdrawn in Firestore,
-    // never revert them back to active. ESPN data can be inconsistent across refreshes.
+    // Permanent lock: if ESPN EXPLICITLY marks this golfer as cut/withdrawn in this run,
+    // don't revert them to active even if other data looks inconsistent.
+    // The lock is intentionally narrow — only ESPN's explicit CUT/MC/WD/DQ flags qualify.
+    // Linescore-detected cuts are NOT locked so they can be corrected on the next run.
     if (lockedCutGolferIds.has(golfer.id) && status === 'active') {
       const prev = existingScores.get(golfer.id);
       status = prev?.status || 'cut';
