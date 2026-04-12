@@ -728,11 +728,30 @@ async function scrapeAndUpdate() {
 
   // --- Daily Leaderboard Snapshots ---
   // Check if any completed rounds need a snapshot saved.
-  // A round N is complete if espnRound > N, or if N == espnRound and eventState == 'post'.
+  //
+  // A round N is complete when ANY of these is true:
+  //   (a) espnRound > N  — ESPN has advanced to the next round
+  //   (b) N == espnRound && eventState == 'post'  — tournament is over
+  //   (c) N == espnRound && all active golfers show THRU='F'
+  //       — the round finished but ESPN hasn't advanced the period yet
+  //       (this covers the overnight gap between rounds, e.g. Sat night → Sun)
+  //
+  // The round-transition snapshot (earlier in this function) already handles case (a)
+  // using pre-update scores. The fallback loop here handles cases (b) and (c) as a
+  // safety net using the freshly-written scores.
+
+  const activeGolfers = [...updatedScoreMap.values()].filter(s => s.status === 'active');
+  const allActiveFinished =
+    activeGolfers.length > 0 && activeGolfers.every(s => s.thru === 'F');
+  if (allActiveFinished) {
+    console.log('All active golfers have THRU=F — treating current round as complete for snapshot purposes.');
+  }
+
   for (let round = 1; round <= 4; round++) {
     const roundComplete =
       (round < espnRound) ||
-      (round === espnRound && eventState === 'post');
+      (round === espnRound && eventState === 'post') ||
+      (round === espnRound && allActiveFinished);
     if (!roundComplete) continue;
 
     const snapshotRef = doc(db, 'tournaments', tournament.id, 'dailyLeaderboards', 'round' + round);

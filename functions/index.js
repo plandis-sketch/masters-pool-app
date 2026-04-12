@@ -497,7 +497,7 @@ async function scrapeAndUpdate() {
       name: golfer.name, position, score: scoreToPar, today, thru, status, points,
       roundScores, teeTime, lastUpdated: Timestamp.now(), source: "scrape",
     });
-    updatedScoreMap.set(golfer.id, { points });
+    updatedScoreMap.set(golfer.id, { points, thru, status });
     matched++;
   }
 
@@ -572,10 +572,24 @@ async function scrapeAndUpdate() {
   logger.info(`Updated ${matched} golfer scores. ${missingCount} marked withdrawn. ${entryUpdates} entry totals updated.`);
 
   // --- Daily Leaderboard Snapshots ---
+  // A round N is complete when ANY of these is true:
+  //   (a) espnRound > N  — ESPN has advanced to the next round
+  //   (b) N == espnRound && eventState == 'post'  — tournament is over
+  //   (c) N == espnRound && all active golfers show THRU='F'
+  //       — the round finished but ESPN hasn't advanced the period yet
+  //       (covers the overnight gap between rounds, e.g. Sat night → Sun)
+  const activeGolfers = [...fullScoreMap.values()].filter(s => s.status === "active");
+  const allActiveFinished =
+    activeGolfers.length > 0 && activeGolfers.every(s => s.thru === "F");
+  if (allActiveFinished) {
+    logger.info("All active golfers have THRU=F — treating current round as complete for snapshot.");
+  }
+
   for (let round = 1; round <= 4; round++) {
     const roundComplete =
       (round < espnRound) ||
-      (round === espnRound && eventState === "post");
+      (round === espnRound && eventState === "post") ||
+      (round === espnRound && allActiveFinished);
     if (!roundComplete) continue;
 
     const snapshotRef = db.collection("tournaments").doc(tournament.id)

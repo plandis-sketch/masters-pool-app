@@ -10,6 +10,15 @@ on:
     - cron: '*/5 11-23 9-12 4 0,4-6'
     - cron: '*/5 0-3 10-13 4 *'
   workflow_dispatch: # Allow manual trigger from GitHub UI
+    inputs:
+      populate_snapshot:
+        description: 'Manually populate snapshot for round (1-4). Leave blank for normal scrape.'
+        required: false
+        default: ''
+      force_snapshot:
+        description: 'Overwrite existing snapshot? (true/false)'
+        required: false
+        default: 'false'
 
 jobs:
   scrape:
@@ -32,4 +41,13 @@ jobs:
           VITE_FIREBASE_STORAGE_BUCKET: ${{ secrets.VITE_FIREBASE_STORAGE_BUCKET }}
           VITE_FIREBASE_MESSAGING_SENDER_ID: ${{ secrets.VITE_FIREBASE_MESSAGING_SENDER_ID }}
           VITE_FIREBASE_APP_ID: ${{ secrets.VITE_FIREBASE_APP_ID }}
-        run: node scripts/scrape-scores.js --once
+        run: |
+          if [ -n "${{ github.event.inputs.populate_snapshot }}" ]; then
+            FORCE_FLAG=""
+            if [ "${{ github.event.inputs.force_snapshot }}" = "true" ]; then
+              FORCE_FLAG="--force"
+            fi
+            node scripts/populate-snapshots.js --round ${{ github.event.inputs.populate_snapshot }} $FORCE_FLAG
+          else
+            node scripts/scrape-scores.js --once
+          fi
