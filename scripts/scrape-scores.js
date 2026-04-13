@@ -143,6 +143,14 @@ async function scrapeAndUpdate() {
   }
   console.log(`Tournament: ${tournament.name} (${tournament.id})`);
 
+  // Skip if tournament is complete — prevents overwriting final/locked scores
+  // when the workflow is manually triggered after the tournament ends.
+  // Mirrors the same guard in functions/index.js.
+  if (tournament.status === 'complete') {
+    console.log('Tournament is complete — nothing to update.');
+    return;
+  }
+
   const firstTeeTime = tournament.firstTeeTime?.toDate?.() || new Date(tournament.firstTeeTime);
   if (now >= firstTeeTime && !tournament.picksLocked) {
     console.log('First tee time has passed — locking picks!');
