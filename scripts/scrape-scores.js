@@ -70,12 +70,12 @@ function calculatePoints(position, status, cutPlayerCount, currentRound) {
     if (currentRound && currentRound >= 3) return cutPlayerCount ?? 50;
     return missedCutScore;
   }
-  const rawPoints = position ?? 999;
-  // Safety cap: no golfer's score can exceed the missed-cut score once the cut is known
-  if (cutPlayerCount && cutPlayerCount > 0 && rawPoints > missedCutScore) {
-    return missedCutScore;
-  }
-  return rawPoints;
+  // Active players: return their actual position as points.
+  // NEVER cap active players at missedCutScore — a player who made the cut can legitimately
+  // finish at a position numerically higher than cutPlayerCount (ESPN's c.order numbering
+  // includes cut players, so their order can exceed the active-player count).
+  // Only status === 'cut' / 'withdrawn' should ever receive the missed-cut penalty.
+  return position ?? 999;
 }
 
 function normalizeName(name) {
@@ -424,31 +424,64 @@ async function scrapeAndUpdate() {
     }
   }
 
-  // Build position map: group competitors by score, assign tied position = min order in group.
-  // ESPN's c.order is sequential (1,2,3,4…) — we must group by score to find true tied positions.
-  // c.score may be a number, string, or object {value, displayValue}; normalize to a string key.
+  // Build position map: rank active players by score (ascending = better), assign tied positions.
+  // Do NOT use ESPN's c.order — it is a global sequential number across ALL competitors
+  // (including cut players), so active players at the bottom of the leaderboard can have
+  // c.order values higher than cutPlayerCount, which is not their actual position.
   const getScoreKey = (score) => {
     if (score === null || score === undefined) return 'unknown';
     if (typeof score === 'object') return String(score.value ?? score.displayValue ?? 999);
     return String(score);
   };
-  const scoreToMinOrder = new Map();
-  for (const c of competitors) {
+  const parseScoreValue = (key) => {
+    if (key === 'unknown') return 999;
+    if (key === 'E' || key === 'e') return 0;
+    const v = parseInt(key);
+    return isNaN(v) ? 999 : v;
+  };
+
+  // Only rank non-eliminated players.
+  // In R4, also exclude players with no completed R3 linescore — they missed the cut and
+  // ESPN may not be flagging them as CUT post-tournament. Including them would give cut
+  // players' 2-round scores a position rank among made-cut players' 4-round scores.
+  const activeForRanking = competitors.filter(c => {
     const s = (c.status?.displayValue || '').toUpperCase();
-    if (s === 'CUT' || s === 'MC' || s === 'WD' || s === 'DQ') continue;
-    const scoreKey = getScoreKey(c.score);
-    const order = c.order ?? 999;
-    if (!scoreToMinOrder.has(scoreKey) || order < scoreToMinOrder.get(scoreKey)) {
-      scoreToMinOrder.set(scoreKey, order);
+    if (s === 'CUT' || s === 'MC' || s === 'WD' || s === 'DQ') return false;
+    if (espnRound >= 4) {
+      const hasR3 = (c.linescores || []).some(
+        ls => ls.period === 3 && ls.value !== undefined && ls.displayValue !== '-' && ls.displayValue !== '--'
+      );
+      if (!hasR3) return false;
     }
+    return true;
+  });
+
+  // Count players at each score
+  const scorePlayerCount = new Map();
+  for (const c of activeForRanking) {
+    const key = getScoreKey(c.score);
+    scorePlayerCount.set(key, (scorePlayerCount.get(key) || 0) + 1);
   }
+
+  // Sort unique scores ascending (lower = better)
+  const sortedScoreKeys = [...scorePlayerCount.keys()].sort(
+    (a, b) => parseScoreValue(a) - parseScoreValue(b)
+  );
+
+  // Assign tied positions: position of the first player in each score group
+  const scoreToPosition = new Map();
+  let cumulativeCount = 0;
+  for (const scoreKey of sortedScoreKeys) {
+    scoreToPosition.set(scoreKey, cumulativeCount + 1);
+    cumulativeCount += scorePlayerCount.get(scoreKey);
+  }
+
+  // Map each competitor ID to their tied position
   const positionMap = new Map();
-  for (const c of competitors) {
+  for (const c of activeForRanking) {
     const scoreKey = getScoreKey(c.score);
-    const tiedPos = scoreToMinOrder.get(scoreKey);
-    if (tiedPos != null) {
-      positionMap.set(c.id, { position: tiedPos });
-    }
+    const pos = scoreToPosition.get(scoreKey);
+    if (pos != null) positionMap.set(c.id, { position: pos });
   }
 
   let matched = 0;

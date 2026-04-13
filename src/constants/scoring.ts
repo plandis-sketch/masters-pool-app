@@ -8,9 +8,10 @@
  * - Entry total = sum of 6 golfers' points
  * - Lowest total wins
  *
- * IMPORTANT: Once the cut is determined, no golfer's score may ever exceed
- * the missed-cut score (cutPlayerCount + 1). This is a hard ceiling that
- * prevents data-refresh bugs from inflating scores.
+ * IMPORTANT: Only players with status 'cut' or 'withdrawn' receive the missed-cut
+ * penalty score. Active players (those who made the cut) always receive their actual
+ * finishing position — never capped at missedCutScore, since they can legitimately
+ * finish at positions higher than cutPlayerCount.
  */
 
 export function getMissedCutScore(cutPlayerCount: number | null): number {
@@ -28,15 +29,12 @@ export function calculateGolferPoints(
     return missedCutScore;
   }
 
-  const rawPoints = position ?? 999;
-
-  // Safety cap: once we know the cut, no golfer can score above the missed-cut score.
-  // This catches stale ESPN data, re-ordered positions, or any other edge case.
-  if (cutPlayerCount && cutPlayerCount > 0 && rawPoints > missedCutScore) {
-    return missedCutScore;
-  }
-
-  return rawPoints;
+  // Active players: return their actual position as points.
+  // NEVER cap active players at missedCutScore — a player who made the cut can legitimately
+  // finish at a position numerically higher than cutPlayerCount (ESPN's c.order numbering
+  // includes cut players, so their stored position can exceed the active-player count).
+  // Only status === 'cut' / 'withdrawn' (handled above) should receive the missed-cut penalty.
+  return position ?? 999;
 }
 
 export function calculateEntryTotal(golferPoints: number[]): number {
